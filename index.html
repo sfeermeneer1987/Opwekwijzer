@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OpwekWijzer &mdash; onafhankelijke berekening van zonnepanelen en thuisbatterij</title>
+<meta name="description" content="Bereken gratis wat zonnepanelen en een thuisbatterij u opleveren. Onafhankelijk, op basis van de officiële 3D-gebouwenkaart (Kadaster) en EU-opbrengstdata (PVGIS).">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --groen:#14301f; --groen2:#1d4a2f; --accent:#f0a500; --accent2:#ffc93d;
+  --room:#faf8f2; --wit:#fff; --inkt:#1c211d; --grijs:#6d7269; --lijn:#e7e3d8;
+  --r:16px; --schaduw:0 10px 34px rgba(20,48,31,.12);
+}
+*{box-sizing:border-box; margin:0; padding:0}
+html{-webkit-text-size-adjust:100%}
+body{font:400 16px/1.6 Inter,system-ui,sans-serif; color:var(--inkt); background:var(--room)}
+.wrap{max-width:640px; margin:0 auto; padding:0 18px 60px}
+
+header{padding:18px 0 6px; display:flex; align-items:center; justify-content:space-between}
+.logo{font:800 22px/1 Archivo,sans-serif; color:var(--groen); letter-spacing:-.02em}
+.logo i{font-style:normal; color:var(--accent)}
+.onaf{font-size:11px; font-weight:600; color:var(--grijs); text-align:right; line-height:1.35}
+
+.hero{padding:26px 0 10px}
+.hero h1{font:800 clamp(26px,7vw,36px)/1.15 Archivo,sans-serif; color:var(--groen); letter-spacing:-.02em}
+.hero h1 em{font-style:normal; color:var(--accent); white-space:nowrap}
+.hero p{margin-top:10px; color:var(--grijs); font-size:15px}
+.bewijs{display:flex; gap:14px; flex-wrap:wrap; margin-top:14px}
+.bewijs span{font-size:11.5px; font-weight:600; color:var(--groen2); background:#eaf2ea;
+  border:1px solid #d8e6d8; padding:5px 10px; border-radius:99px}
+
+.stap{display:none; margin-top:22px}
+.stap.on{display:block; animation:in .3s ease}
+@keyframes in{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
+.kaart{background:var(--wit); border:1px solid var(--lijn); border-radius:var(--r);
+  padding:20px 18px; box-shadow:var(--schaduw)}
+.kaart h2{font:700 19px/1.3 Archivo,sans-serif; color:var(--groen); margin-bottom:4px}
+.kaart .sub{font-size:13.5px; color:var(--grijs); margin-bottom:14px}
+
+.keuze{display:grid; gap:10px}
+.keuze button{display:flex; align-items:center; gap:14px; text-align:left; width:100%;
+  background:var(--wit); border:1.5px solid var(--lijn); border-radius:14px; padding:16px 15px;
+  font:inherit; cursor:pointer; transition:border-color .15s, transform .12s, box-shadow .15s}
+.keuze button:active{transform:scale(.99)}
+.keuze button:hover{border-color:var(--accent)}
+.keuze .ico{font-size:26px; flex:none; width:44px; height:44px; display:flex; align-items:center;
+  justify-content:center; background:#f4f0e4; border-radius:12px}
+.keuze b{display:block; font-size:15.5px; color:var(--inkt)}
+.keuze span{display:block; font-size:12.5px; color:var(--grijs); margin-top:1px}
+
+.veldrij{display:flex; gap:10px}
+.veld{flex:1; display:flex; flex-direction:column; gap:4px; margin-bottom:12px}
+.veld label{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--grijs)}
+.veld input{border:1.5px solid var(--lijn); border-radius:11px; padding:13px 12px;
+  font:inherit; font-size:16px; background:var(--wit); width:100%; color:var(--inkt)}
+.veld input:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(240,165,0,.18)}
+.tik{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px}
+.tik button{border:1.5px solid var(--lijn); background:var(--wit); border-radius:11px;
+  padding:12px 6px; font:600 13.5px/1.3 Inter,sans-serif; color:var(--inkt); cursor:pointer;
+  transition:all .12s}
+.tik button.aan{border-color:var(--groen2); background:var(--groen2); color:#fff}
+.tikkop{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+  color:var(--grijs); margin:2px 0 6px}
+
+.knop{display:block; width:100%; border:0; border-radius:13px; padding:16px;
+  font:700 16px/1 Inter,sans-serif; color:#fff; cursor:pointer; margin-top:6px;
+  background:linear-gradient(180deg,var(--groen2),var(--groen)); box-shadow:0 4px 14px rgba(20,48,31,.28);
+  transition:transform .12s}
+.knop:active{transform:translateY(1px)}
+.knop.amber{background:linear-gradient(180deg,var(--accent2),var(--accent)); color:var(--groen);
+  box-shadow:0 4px 14px rgba(240,165,0,.35)}
+.terug{background:none; border:0; font:600 13px/1 Inter,sans-serif; color:var(--grijs);
+  cursor:pointer; padding:12px 0 0; text-decoration:underline}
+.wacht{display:none; text-align:center; padding:26px 0 8px; color:var(--grijs); font-size:14px}
+.wacht.on{display:block}
+.wacht .tol{width:34px; height:34px; margin:0 auto 10px; border-radius:50%;
+  border:3.5px solid var(--lijn); border-top-color:var(--accent); animation:tol .8s linear infinite}
+@keyframes tol{to{transform:rotate(360deg)}}
+.fout{display:none; margin-top:10px; padding:11px 13px; border-radius:11px; font-size:13.5px;
+  background:#fdf1ef; border:1px solid #f0cfc7; color:#8a3a2a}
+.fout.on{display:block}
+
+.grote{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:14px 0}
+.grote div{background:var(--wit); border:1px solid var(--lijn); border-radius:13px;
+  padding:13px 8px; text-align:center; box-shadow:0 2px 8px rgba(20,48,31,.05)}
+.grote b{display:block; font:800 clamp(19px,6vw,26px)/1.1 Archivo,sans-serif; color:var(--groen);
+  font-variant-numeric:tabular-nums}
+.grote span{display:block; font-size:10.5px; font-weight:600; color:var(--grijs); margin-top:3px;
+  text-transform:uppercase; letter-spacing:.04em}
+.dakplan{background:var(--wit); border:1px solid var(--lijn); border-radius:13px; padding:10px;
+  margin-bottom:10px}
+.dakplan .dp-sub{font-size:11px; color:var(--grijs); text-align:center; margin-top:6px}
+.adres-check{font-size:13.5px; font-weight:600; color:var(--groen2); margin-bottom:10px}
+
+.gate{margin-top:16px; background:linear-gradient(180deg,#fffdf6,#fdf6e4);
+  border:1.5px solid #f0dfae; border-radius:var(--r); padding:18px 16px}
+.gate h3{font:700 17px/1.35 Archivo,sans-serif; color:var(--groen)}
+.gate ul{margin:9px 0 13px; padding-left:2px; list-style:none}
+.gate li{font-size:13.5px; padding:3px 0 3px 24px; position:relative; color:#3d4238}
+.gate li::before{content:'\2713'; position:absolute; left:2px; color:var(--accent); font-weight:800}
+.avg{display:flex; gap:9px; align-items:flex-start; margin:10px 0 4px}
+.avg input{width:19px; height:19px; margin-top:2px; accent-color:var(--groen2); flex:none}
+.avg span{font-size:12px; line-height:1.55; color:var(--grijs)}
+.klein{font-size:11px; color:var(--grijs); margin-top:10px; line-height:1.55}
+.klein a{color:var(--groen2); font-weight:600}
+
+.rapport h2{font:800 22px/1.25 Archivo,sans-serif; color:var(--groen); margin:20px 0 4px}
+.rapport h3{font:700 16px/1.3 Archivo,sans-serif; color:var(--groen); margin:18px 0 8px;
+  padding-bottom:5px; position:relative}
+.rapport h3::after{content:''; position:absolute; left:0; bottom:0; width:34px; height:3px;
+  border-radius:3px; background:var(--accent)}
+.rtab{width:100%; border-collapse:collapse; font-size:13px; background:var(--wit);
+  border-radius:13px; overflow:hidden; border:1px solid var(--lijn)}
+.rtab th{background:#f4f1e8; font-size:10px; text-transform:uppercase; letter-spacing:.06em;
+  color:var(--grijs); text-align:left; padding:8px 10px}
+.rtab td{padding:9px 10px; border-top:1px solid #f1eee5; vertical-align:top;
+  font-variant-numeric:tabular-nums}
+.rtab td:first-child{color:var(--grijs)}
+.rtab td:last-child{font-weight:600}
+.rtab tr.top td{background:#f6faf4; font-weight:700}
+.adviesblok{background:var(--wit); border:1px solid var(--lijn); border-left:4px solid var(--accent);
+  border-radius:12px; padding:12px 14px; margin:9px 0; font-size:13.5px}
+.adviesblok b{display:block; color:var(--groen); margin-bottom:2px}
+.succes{margin-top:14px; background:#eef7ee; border:1.5px solid #cde5cd;
+  border-radius:13px; padding:14px 15px; font-size:14px; color:#22512f}
+
+footer{margin-top:44px; padding-top:16px; border-top:1px solid var(--lijn);
+  font-size:11px; color:var(--grijs); line-height:1.7}
+footer b{color:var(--groen2)}
+footer a{color:var(--groen2); font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="logo">Opwek<i>Wijzer</i></div>
+  <div class="onaf">Onafhankelijk<br>Wij verkopen niets</div>
+</header>
+
+<div class="hero" id="hero">
+  <h1>Wat levert uw dak op &mdash; <em>ook ná 2027?</em></h1>
+  <p>Gratis berekening van zonnepanelen en thuisbatterij, op basis van de officiële
+     3D-gebouwenkaart en EU-opbrengstdata. Geen verkooppraat: ook als iets níet uit kan, zeggen we het.</p>
+  <div class="bewijs">
+    <span>3D-dak van het Kadaster</span>
+    <span>Opbrengst via EU-PVGIS</span>
+    <span>Alleen gedeeld met uw toestemming</span>
+  </div>
+</div>
+
+<!-- STAP 0: keuze -->
+<div class="stap on" id="stap0">
+  <div class="kaart">
+    <h2>Wat wilt u berekenen?</h2>
+    <div class="sub">Kies wat bij uw situatie past &mdash; het kost 1 minuut.</div>
+    <div class="keuze">
+      <button data-route="panelen"><span class="ico">&#9728;</span>
+        <span><b>Zonnepanelen</b><span>Hoeveel passen er op mijn dak, en wat levert dat op?</span></span></button>
+      <button data-route="accu"><span class="ico">&#128267;</span>
+        <span><b>Thuisbatterij</b><span>Ik héb al panelen &mdash; welke accu past bij mij?</span></span></button>
+      <button data-route="beide"><span class="ico">&#9889;</span>
+        <span><b>Beide</b><span>Panelen én batterij, in één complete berekening</span></span></button>
+    </div>
+  </div>
+</div>
+
+<!-- STAP 1a: adres -->
+<div class="stap" id="stapAdres">
+  <div class="kaart">
+    <h2>Waar staat uw woning?</h2>
+    <div class="sub">Wij halen uw dak op uit de officiële 3D-gebouwenkaart van het Kadaster.</div>
+    <div class="veldrij">
+      <div class="veld" style="flex:1.1"><label>Postcode</label>
+        <input id="pc" inputmode="text" autocomplete="postal-code" placeholder="1234 AB"></div>
+      <div class="veld"><label>Huisnummer</label>
+        <input id="nr" inputmode="numeric" placeholder="12"></div>
+    </div>
+    <div class="tikkop">Uw stroomverbruik per jaar</div>
+    <div class="tik" id="tkVerbruik">
+      <button data-v="2300">1&ndash;2 pers. &middot; ±2.300</button>
+      <button data-v="3500" class="aan">3&ndash;4 pers. &middot; ±3.500</button>
+      <button data-v="4600">5+ pers. &middot; ±4.600</button>
+      <button data-v="6500">Warmtepomp/EV &middot; ±6.500</button>
+    </div>
+    <div class="tikkop">Overdag thuis?</div>
+    <div class="tik" id="tkProfiel">
+      <button data-v="weg" class="aan">Meestal weg</button>
+      <button data-v="thuis">Vaak thuis</button>
+    </div>
+    <button class="knop" id="knopDak">Bereken mijn dak &rarr;</button>
+    <div class="fout" id="foutAdres"></div>
+    <button class="terug" data-naar="stap0">&larr; terug</button>
+  </div>
+  <div class="wacht" id="wachtDak"><div class="tol"></div>Uw dak wordt opgehaald uit 3D BAG&hellip;</div>
+</div>
+
+<!-- STAP 1b: accu -->
+<div class="stap" id="stapAccu">
+  <div class="kaart">
+    <h2>Uw situatie</h2>
+    <div class="sub">Vier tikken &mdash; dan weet u welke accu past, in échte specificaties.</div>
+    <div class="tikkop">Hoeveel wekken uw panelen per jaar op?</div>
+    <div class="tik" id="tkOpwek">
+      <button data-v="2500">±2.500 kWh (6&ndash;8 pan.)</button>
+      <button data-v="3600" class="aan">±3.600 kWh (10&ndash;12)</button>
+      <button data-v="5000">±5.000 kWh (14&ndash;16)</button>
+      <button data-v="7000">±7.000 kWh (18+)</button>
+    </div>
+    <div class="tikkop">Uw stroomverbruik per jaar</div>
+    <div class="tik" id="tkVerbruik2">
+      <button data-v="2300">±2.300</button>
+      <button data-v="3500" class="aan">±3.500</button>
+      <button data-v="4600">±4.600</button>
+      <button data-v="6500">6.500+ (wp/EV)</button>
+    </div>
+    <div class="tikkop">Uw energiecontract</div>
+    <div class="tik" id="tkContract">
+      <button data-v="vast" class="aan">Vast tarief</button>
+      <button data-v="dyn">Dynamisch (uurprijzen)</button>
+    </div>
+    <div class="tikkop">Aansluiting van de woning</div>
+    <div class="tik" id="tkFase">
+      <button data-v="1" class="aan">1-fase (meest voorkomend)</button>
+      <button data-v="3">3-fase (krachtstroom)</button>
+    </div>
+    <button class="knop" id="knopAccu">Bereken mijn accu &rarr;</button>
+    <button class="terug" data-naar="stap0">&larr; terug</button>
+  </div>
+</div>
+
+<!-- STAP 2: teaser + gate -->
+<div class="stap" id="stapTeaser">
+  <div class="adres-check" id="adresCheck"></div>
+  <div class="dakplan" id="dakplan" style="display:none"></div>
+  <div class="grote" id="grote"></div>
+  <div id="teaserNoot" style="font-size:12px;color:var(--grijs);text-align:center"></div>
+
+  <div class="gate">
+    <h3 id="gateKop">Ontvang uw volledige rapport &mdash; gratis</h3>
+    <ul id="gateLijst"></ul>
+    <div class="veld"><label>Naam</label><input id="ldNaam" autocomplete="name" placeholder="Voor- en achternaam"></div>
+    <div class="veldrij">
+      <div class="veld"><label>E-mail</label><input id="ldMail" type="email" autocomplete="email" placeholder="u@voorbeeld.nl"></div>
+      <div class="veld"><label>Telefoon</label><input id="ldTel" type="tel" autocomplete="tel" placeholder="06 12345678"></div>
+    </div>
+    <input type="text" id="website" name="website" tabindex="-1" autocomplete="off"
+      aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+    <div class="avg">
+      <input type="checkbox" id="ldOk">
+      <span id="avgTekst">Ik ga ermee akkoord dat OpwekWijzer mijn gegevens en deze berekening deelt met
+      maximaal één gecertificeerd installatiebedrijf in mijn regio, dat mij telefonisch of per
+      e-mail een vrijblijvend voorstel doet. Ik kan deze toestemming altijd intrekken.</span>
+    </div>
+    <button class="knop amber" id="knopLead">Toon mijn rapport</button>
+    <div class="fout" id="foutLead"></div>
+    <div class="klein">Uw gegevens worden nooit doorverkocht aan meerdere partijen tegelijk en nooit
+    gebruikt voor andere doeleinden. Lees hoe wij met uw gegevens omgaan in onze
+    <a href="/privacy">privacyverklaring</a>. Vragen? privacy@opwekwijzer.nl</div>
+  </div>
+  <button class="terug" data-naar="stap0">&larr; opnieuw beginnen</button>
+</div>
+
+<!-- STAP 3: rapport -->
+<div class="stap rapport" id="stapRapport">
+  <div class="succes"><b>Gelukt!</b> Een gecertificeerd installatiebedrijf uit uw regio
+    neemt binnen 1 werkdag contact met u op voor een vrijblijvend voorstel.</div>
+  <div id="rapportBody"></div>
+  <div class="klein" style="margin-top:14px">Deze berekening is een goed onderbouwde indicatie op basis van
+  officiële bronnen (3D BAG, PVGIS, marktprijspeil), geen offerte. Werkelijke prijzen en
+  opbrengsten kunnen afwijken; het installatiebedrijf maakt een exact voorstel voor uw situatie.</div>
+</div>
+
+<footer>
+  <b>OpwekWijzer</b> &mdash; onafhankelijke rekentool voor zonnepanelen en thuisbatterijen.<br>
+  Bronnen: 3D BAG (TU Delft/Kadaster) &middot; PVGIS (EU Joint Research Centre) &middot; marktprijspeil.
+  Wij verkopen zelf geen panelen of accu's. Berekeningen zijn indicatief. Salderen stopt per
+  1 januari 2027 (Rijksoverheid); wij rekenen standaard met de situatie ná die datum.<br>
+  <a href="/privacy">Privacyverklaring</a> &middot; KvK-nummer volgt &middot; privacy@opwekwijzer.nl
+</footer>
+
+</div>
+<script src="/roof.js?v=3.8.1"></script>
+<script src="/opwek.js?v=1.1.0"></script>
+</body>
+</html>
