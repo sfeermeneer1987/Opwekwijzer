@@ -1,5 +1,5 @@
 /* ==================================================================
-   OpwekWijzer — viewer.js  (v1.0.0)
+   OpwekWijzer — viewer.js  (v1.0.1)
    Het echte pand in 3D, met de panelen die we net hebben gelegd.
 
    Bewust klein gehouden: geen bedieningspaneel, geen instellingen. Dit is
@@ -10,6 +10,10 @@
    - model.tris : de echte driehoeken uit 3D BAG, in RD (x=oost, y=noord, z=NAP)
    - panel.c3   : de vier hoekpunten van elk paneel, ook in RD+NAP
    Three.js rekent met y omhoog, dus: X = x-cx, Y = z-minz, Z = -(y-cy).
+
+   v1.0.1: de camera rekent zijn afstand uit de omhullende bol van het model en
+   de gezichtshoek. De oude vuistregel (grootste maat x 1,55) liet een lang
+   rijtjespand half buiten beeld vallen.
 ================================================================== */
 window.Viewer3D = (function(){
 "use strict";
@@ -34,12 +38,12 @@ function laadThree(){
 // de landingspagina hier niets van hoeft te weten.
 function bak(){
   let el=document.getElementById('vw3d');
-  if(el) return el;
+  if(el){ el.style.display='block'; return el; }
   const na=document.getElementById('dakplan');
   if(!na) return null;
   el=document.createElement('div');
   el.id='vw3d';
-  el.style.cssText='position:relative;width:100%;height:260px;border-radius:14px;'
+  el.style.cssText='position:relative;width:100%;height:280px;border-radius:14px;'
     +'overflow:hidden;margin-bottom:12px;background:#0d2318;cursor:grab;'
     +'box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)';
   el.innerHTML='<div id="vw3dNoot" style="position:absolute;left:10px;bottom:8px;z-index:2;'
@@ -74,7 +78,6 @@ async function toon(model, panelen){
 
   scene=new T.Scene();
   scene.background=new T.Color(0x0d2318);
-  scene.fog=new T.Fog(0x0d2318, 45, 140);
 
   /* ---- het gebouw: dak, gevel en grond apart ---- */
   function bouw(soort, kleur){
@@ -129,22 +132,40 @@ async function toon(model, panelen){
   vul.position.set(25, 12, -30);
   scene.add(vul);
 
-  /* ---- camera: draait rustig rond, tot de bezoeker zelf pakt ---- */
-  const straal=Math.max(model.spanX, model.spanY, model.height)*1.55+9;
-  const hoogte=model.height+straal*0.42;
-  camera=new T.PerspectiveCamera(42, 1, 0.5, 400);
+  /* ---- camera: het pand PAST, wat voor pand het ook is ----
+     We meten de omhullende bol van alles wat in beeld staat en rekenen daaruit
+     de afstand terug die nodig is om die bol precies in de gezichtshoek te
+     vangen (verticaal én horizontaal — op een smal telefoonscherm is de
+     horizontale hoek de krappe).                                            */
+  const box=new T.Box3().setFromObject(scene);
+  const mid=box.getCenter(new T.Vector3());
+  const bol=box.getBoundingSphere(new T.Sphere()).radius || 12;
+
+  const FOV=42;
+  camera=new T.PerspectiveCamera(FOV, 1, 0.5, 2000);
 
   renderer=new T.WebGLRenderer({antialias:true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
   doek.appendChild(renderer.domElement);
 
+  let afstand=bol*2.4;                       // wordt hieronder exact gezet
+  const ooghoek=28*Math.PI/180;              // vaste, natuurlijke kijkhoek
   let hoek=-0.6, sleep=false, vorigeX=0, draai=true;
+
   function zet(){
     const b=doek.getBoundingClientRect();
     const w=Math.max(1, b.width), h=Math.max(1, b.height);
     renderer.setSize(w,h,false);
     camera.aspect=w/h;
     camera.updateProjectionMatrix();
+
+    const vFov=FOV*Math.PI/180;
+    const hFov=2*Math.atan(Math.tan(vFov/2)*camera.aspect);
+    const nodig=Math.max(bol/Math.sin(vFov/2), bol/Math.sin(hFov/2));
+    afstand=nodig*1.12;                      // beetje lucht rondom
+    camera.far=afstand*4+bol*4;
+    camera.updateProjectionMatrix();
+    scene.fog=new T.Fog(0x0d2318, afstand*0.9, afstand*2.6);
   }
   zet();
   window.addEventListener('resize', zet);
@@ -169,8 +190,13 @@ async function toon(model, panelen){
   (function teken(){
     stop=requestAnimationFrame(teken);
     if(draai) hoek += 0.0022;
-    camera.position.set(Math.sin(hoek)*straal, hoogte, Math.cos(hoek)*straal);
-    camera.lookAt(0, model.height*0.45, 0);
+    const vlak=Math.cos(ooghoek)*afstand;    // horizontale straal
+    camera.position.set(
+      mid.x + Math.sin(hoek)*vlak,
+      mid.y + Math.sin(ooghoek)*afstand,
+      mid.z + Math.cos(hoek)*vlak
+    );
+    camera.lookAt(mid);
     renderer.render(scene, camera);
   })();
 
