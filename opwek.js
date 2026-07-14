@@ -1,5 +1,5 @@
 /* ==================================================================
-   OpwekWijzer — opwek.js  (v1.2.0)
+   OpwekWijzer — opwek.js  (v1.3.0)
    De consumentenmotor. Bewust ZELFSTANDIG: alleen roof.js wordt
    hergebruikt (het 3D-dak), verder niets.
 
@@ -64,7 +64,7 @@ function tikgroep(id){
 function fout(id, tekst){
   const f=$(id);
   f.textContent=tekst; f.classList.add('on');
-  setTimeout(()=>f.classList.remove('on'), 6000);
+  setTimeout(()=>f.classList.remove('on'), 8000);
 }
 
 /* ---------------- de staat van dit bezoek ---------------- */
@@ -91,57 +91,120 @@ const pakFase     = tikgroep('tkFase');
 /* ==================================================================
    ROUTE A — zonnepanelen (en 'beide'): adres -> echt dak -> opbrengst
 ================================================================== */
+
+/* ---- gereedschap voor adres -> pand.
+   Zelfde route als de Watt-Piek-planner, die in de praktijk bewezen is:
+   geocoderen bij PDOK, en het pand ophalen uit de BAG-WFS op coördinaat.
+   De lookup-service gaf geen betrouwbaar pandidentificatie terug — daar zat
+   de fout: het adres werd wel gevonden, het pand niet.                     ---- */
+async function haalJson(url, ms){
+  const ctl=new AbortController();
+  const t=setTimeout(()=>ctl.abort(), ms||9000);
+  try{
+    const r=await fetch(url,{signal:ctl.signal});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+function toMerc(lat,lng){
+  const x=lng*20037508.342789244/180;
+  let y=Math.log(Math.tan((90+lat)*Math.PI/360))/(Math.PI/180);
+  return {x, y:y*20037508.342789244/180};
+}
+function toLokaal(lat,lng,oLat,oLng){
+  const R=6378137;
+  return {x:(lng-oLng)*Math.PI/180*R*Math.cos(oLat*Math.PI/180),
+          y:(lat-oLat)*Math.PI/180*R};
+}
+function inPoly(pt,poly){
+  let in_=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const xi=poly[i].x, yi=poly[i].y, xj=poly[j].x, yj=poly[j].y;
+    if(((yi>pt.y)!==(yj>pt.y)) && (pt.x < (xj-xi)*(pt.y-yi)/(yj-yi)+xi)) in_=!in_;
+  }
+  return in_;
+}
+function pandNummer(f){
+  const p=f.properties||{};
+  for(const k of [p.identificatie, p.pandidentificatie, p.pand_id, p.id, f.id]){
+    if(k==null) continue;
+    const m=String(k).match(/\d{16}/);
+    if(m) return m[0];
+  }
+  return null;
+}
+
+// Het adrespunt (verblijfsobject) ligt per definitie IN het pand. We vragen de
+// BAG-panden rond dat punt op en pakken het pand waar het punt binnenvalt.
+async function vindPand(lat,lng){
+  const m=toMerc(lat,lng), d=6;
+  const url='https://service.pdok.nl/lv/bag/wfs/v2_0?service=WFS&version=2.0.0&request=GetFeature'
+    +'&typeName=bag:pand&outputFormat=application/json&srsName=EPSG:4326&count=20'
+    +'&bbox='+(m.x-d)+','+(m.y-d)+','+(m.x+d)+','+(m.y+d)+',EPSG:3857';
+  const gj=await haalJson(url, 12000);
+  let id=null, eerste=null;
+  (gj.features||[]).forEach(f=>{
+    const g=f.geometry; if(!g||id) return;
+    const nr=pandNummer(f);
+    if(nr && !eerste) eerste=nr;
+    const polys = g.type==='Polygon' ? [g.coordinates] : (g.type==='MultiPolygon' ? g.coordinates : []);
+    polys.forEach(rings=>{
+      if(!rings||!rings[0]||id) return;
+      const ring=rings[0].map(c=> (c[0]>40 ? {lat:c[0],lng:c[1]} : {lat:c[1],lng:c[0]}) );
+      const lok=ring.map(p=>toLokaal(p.lat,p.lng,lat,lng));
+      if(inPoly({x:0,y:0}, lok)) id=nr;
+    });
+  });
+  return id || eerste;   // valt het punt net buiten (aanbouw): pak het pand ernaast
+}
+
 $('knopDak').addEventListener('click', async ()=>{
-  const pc=($('pc').value||'').replace(/\s+/g,'').toUpperCase();
+  const pcRuw=($('pc').value||'').replace(/\s+/g,'').toUpperCase();
   const nr=($('nr').value||'').trim();
-  if(!/^\d{4}[A-Z]{2}$/.test(pc) || !nr){
+  if(!/^\d{4}[A-Z]{2}$/.test(pcRuw) || !nr){
     fout('foutAdres','Vul een geldige postcode (1234 AB) en huisnummer in.'); return;
   }
+  const pc=pcRuw.slice(0,4)+' '+pcRuw.slice(4);      // PDOK matcht het beste met spatie
   $('wachtDak').classList.add('on');
   try{
-    // 1. adres -> coördinaat + pand (PDOK Locatieserver, officieel)
-    const q=encodeURIComponent(pc+' '+nr);
-    const r=await fetch('https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q='+q
-      +'&fq=type:adres&rows=1&fl=id,weergavenaam,centroide_ll');
-    const j=await r.json();
-    const doc=j.response && j.response.docs && j.response.docs[0];
-    if(!doc) throw new Error('adres niet gevonden');
-    const m=/POINT\(([\d.]+) ([\d.]+)\)/.exec(doc.centroide_ll);
+    // 1. adres -> coördinaat (PDOK Locatieserver, officieel)
+    const url='https://api.pdok.nl/bzk/locatieserver/search/v3_1/free'
+      +'?rows=5&fq=type:adres&fl=centroide_ll,weergavenaam,type&q='+encodeURIComponent(pc+' '+nr);
+    const j=await haalJson(url, 9000);
+    const docs=(j.response && j.response.docs) || [];
+    const doc=docs.find(x=>x.type==='adres') || docs[0];
+    const m=doc && doc.centroide_ll && doc.centroide_ll.match(/POINT\(([-\d.]+) ([-\d.]+)\)/);
+    if(!m) throw new Error('dit adres staat niet in de BAG. Kloppen de postcode en het huisnummer?');
     const lon=parseFloat(m[1]), lat=parseFloat(m[2]);
-    D.dossier.adres=doc.weergavenaam; D.dossier.postcode=pc; D.dossier.huisnummer=nr;
+    D.dossier.adres=doc.weergavenaam||(pc+' '+nr);
+    D.dossier.postcode=pcRuw; D.dossier.huisnummer=nr;
     D.dossier.lat=lat; D.dossier.lon=lon;
 
-    // 2. welk pand staat daar? (via de lookup op het adres-id)
-    const r2=await fetch('https://api.pdok.nl/bzk/locatieserver/search/v3_1/lookup?id='
-      +encodeURIComponent(doc.id)+'&fl=pandidentificatie');
-    const j2=await r2.json();
-    const d2=j2.response && j2.response.docs && j2.response.docs[0];
-    let pand=d2 && d2.pandidentificatie;
-    if(Array.isArray(pand)) pand=pand[0];
-    if(!pand) throw new Error('pand niet gevonden');
+    // 2. welk pand staat daar? (BAG-WFS op het adrespunt)
+    const pand=await vindPand(lat, lon);
+    if(!pand) throw new Error('geen gebouw gevonden op dit adres');
     D.dossier.pand_id=String(pand);
 
     // 3. het echte dak uit 3D BAG + panelen erin
     const model=await window.Roof.load(D.dossier.pand_id);
-    if(!model) throw new Error(window.Roof.error()||'3D-dak niet beschikbaar');
+    if(!model) throw new Error(window.Roof.error()||'voor dit pand is nog geen 3D-dak beschikbaar');
     const out=window.Roof.layout(model, {pw:PW, ph:PH, margin:0.30, zonOnly:true, off:{h:0,s:0}, dead:{}, live:{}});
     const actief=out.panels.filter(p=>!p.off);
-    if(!actief.length) throw new Error('geen geschikt dakvlak gevonden');
+    if(!actief.length) throw new Error('op dit dak past geen paneel op de zonzijde');
 
-    // 4. opbrengst per dakvlak via PVGIS (1 kWp per unieke helling/richting, dan schalen)
+    // 4. opbrengst per dakvlak via PVGIS (1 kWp per vlak, daarna schalen)
     const per={};
     out.faces.forEach(f=>{
       if(!f.count) return;
-      per[f.index]={tilt:Math.round(f.tilt||30), azi:(f.azi!=null?Math.round(f.azi):180),
-                    aantal:f.count};
+      per[f.index]={tilt:Math.round(f.tilt||30), azi:(f.azi!=null?Math.round(f.azi):180), aantal:f.count};
     });
     let opwek=0;
     for(const k of Object.keys(per)){
       const v=per[k];
       const aspect=Math.round(((v.azi-180)%360+540)%360-180);   // BAG-azimut -> PVGIS
-      let ey=900;                                                // vangnet
+      let ey=900;                                               // vangnet
       try{
-        const pr=await fetch('/api/pvgis.js?lat='+D.dossier.lat+'&lon='+D.dossier.lon
+        const pr=await fetch('/api/pvgis.js?lat='+lat+'&lon='+lon
           +'&peakpower=1&loss=14&angle='+v.tilt+'&aspect='+aspect
           +'&mountingplace=building&pvtechchoice=crystSi&outputformat=json');
         const pj=await pr.json();
@@ -163,7 +226,7 @@ $('knopDak').addEventListener('click', async ()=>{
     reken();
     teaser();
   }catch(e){
-    fout('foutAdres','Dat lukte niet: '+e.message+'. Controleer het adres, of probeer het zo nog eens.');
+    fout('foutAdres','Dat lukte niet: '+(e.message||e)+'.');
   }finally{
     $('wachtDak').classList.remove('on');
   }
