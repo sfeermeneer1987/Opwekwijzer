@@ -1,8 +1,8 @@
 /* ==================================================================
-   /api/lead.js - de enige deur naar de leaddatabase.
+   /api/lead.js — de enige deur naar de leaddatabase.
 
    Waarom via de server en niet rechtstreeks vanuit de browser:
-   - de databasesleutel blijft geheim (Vercel-omgevingsvariabele)
+   - de databasesleutel blijft geheim (staat in een Vercel-omgevingsvariabele)
    - toestemming wordt hier afgedwongen, niet alleen in de interface
    - een simpele honeypot houdt bots buiten
    - dit is straks ook de plek voor de e-mailmelding aan de koper
@@ -38,20 +38,26 @@ export default async function handler(req, res) {
     return;
   }
 
-  // 3. Validatie - dezelfde regels als in de interface, nu ook hier.
+  // 3. Validatie. Stap A = naam + e-mail (lead wordt al opgeslagen als 'partieel').
+  //    Stap B voegt telefoon + belvoorkeur toe en maakt de lead verkoopbaar.
+  const stap = (b.stap === 'B') ? 'B' : 'A';
   const naam = String(b.naam || '').trim();
   const email = String(b.email || '').trim();
   const telefoon = String(b.telefoon || '').trim();
   if (naam.length < 3) { res.status(400).json({ error: 'naam ontbreekt' }); return; }
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { res.status(400).json({ error: 'e-mail ongeldig' }); return; }
-  if (telefoon.replace(/\D/g, '').length < 9) { res.status(400).json({ error: 'telefoon ongeldig' }); return; }
+  if (stap === 'B' && telefoon.replace(/\D/g, '').length < 9) {
+    res.status(400).json({ error: 'telefoon ongeldig' }); return;
+  }
   if (!['panelen', 'accu', 'beide'].includes(b.route)) { res.status(400).json({ error: 'route onbekend' }); return; }
 
   const num = v => (v === null || v === undefined || v === '' || !isFinite(v)) ? null : Number(v);
 
   const lead = {
     route: b.route,
-    naam, email, telefoon,
+    naam, email,
+    telefoon: telefoon || null,
+    belvoorkeur: b.belvoorkeur || null,
     postcode: b.postcode || null,
     huisnummer: b.huisnummer || null,
     adres: b.adres || null,
@@ -72,18 +78,45 @@ export default async function handler(req, res) {
     bron: String(b.bron || 'direct').slice(0, 120),
     consent: true,
     consent_tekst: String(b.consent_tekst).slice(0, 2000),
-    status: 'nieuw'
+    // 'partieel' = alleen naam + e-mail (nog niet verkoopbaar, wel te mailen)
+    // 'nieuw'    = compleet met telefoon, klaar om aan een installateur te verkopen
+    status: stap === 'B' ? 'nieuw' : 'partieel'
+  };
+  if (stap === 'B') lead.compleet_at = new Date().toISOString();
+
+  const kop = {
+    apikey: KEY,
+    Authorization: 'Bearer ' + KEY,
+    'Content-Type': 'application/json'
   };
 
   try {
+    // Stap B op een bestaande lead: bijwerken in plaats van dubbel opslaan.
+    if (stap === 'B' && b.lead_id) {
+      const u = await fetch(URL_ + '/rest/v1/opwekwijzer_leads?id=eq.' + encodeURIComponent(b.lead_id), {
+        method: 'PATCH',
+        headers: Object.assign({}, kop, { Prefer: 'return=representation' }),
+        body: JSON.stringify({
+          telefoon: lead.telefoon,
+          belvoorkeur: lead.belvoorkeur,
+          status: 'nieuw',
+          compleet_at: lead.compleet_at
+        })
+      });
+      if (u.ok) {
+        const rij = await u.json();
+        if (Array.isArray(rij) && rij.length) {
+          // TODO (fase 2): melding naar de kopende installateur - snelheid is de conversieknop.
+          res.status(200).json({ ok: true, id: b.lead_id });
+          return;
+        }
+      }
+      // lukte het bijwerken niet, dan valt hij hieronder alsnog als nieuwe rij binnen
+    }
+
     const r = await fetch(URL_ + '/rest/v1/opwekwijzer_leads', {
       method: 'POST',
-      headers: {
-        apikey: KEY,
-        Authorization: 'Bearer ' + KEY,
-        'Content-Type': 'application/json',
-        Prefer: 'return=minimal'
-      },
+      headers: Object.assign({}, kop, { Prefer: 'return=representation' }),
       body: JSON.stringify(lead)
     });
     if (!r.ok) {
@@ -92,8 +125,10 @@ export default async function handler(req, res) {
       res.status(502).json({ error: 'opslaan mislukt' });
       return;
     }
-    // TODO (fase 2): hier de e-mail/pushmelding naar de kopende installateur.
-    res.status(200).json({ ok: true });
+    const rij = await r.json();
+    const id = Array.isArray(rij) && rij[0] ? rij[0].id : null;
+    // TODO (fase 2): bij stap B meteen de installateur mailen.
+    res.status(200).json({ ok: true, id });
   } catch (e) {
     console.error('lead-fout:', e);
     res.status(502).json({ error: 'opslaan mislukt' });
