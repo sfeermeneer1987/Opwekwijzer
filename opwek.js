@@ -1,5 +1,5 @@
 /* ==================================================================
-   OpwekWijzer — opwek.js  (v1.3.0)
+   OpwekWijzer — opwek.js  (v1.4.0)
    De consumentenmotor. Bewust ZELFSTANDIG: alleen roof.js wordt
    hergebruikt (het 3D-dak), verder niets.
 
@@ -68,7 +68,7 @@ function fout(id, tekst){
 }
 
 /* ---------------- de staat van dit bezoek ---------------- */
-const D={route:null, dossier:{}, leadId:null, naam:null, mail:null};
+const D={route:null, dossier:{}, leadId:null, naam:null, mail:null, model:null, panelen:null};
 
 /* ---------------- stap 0: keuze ---------------- */
 document.querySelectorAll('#stap0 .keuze button').forEach(b=>{
@@ -192,6 +192,10 @@ $('knopDak').addEventListener('click', async ()=>{
     const actief=out.panels.filter(p=>!p.off);
     if(!actief.length) throw new Error('op dit dak past geen paneel op de zonzijde');
 
+    // het 3D-model en de panelen bewaren we: daar tekent viewer.js het huis mee
+    D.model=model;
+    D.panelen=out.panels;
+
     // 4. opbrengst per dakvlak via PVGIS (1 kWp per vlak, daarna schalen)
     const per={};
     out.faces.forEach(f=>{
@@ -221,7 +225,7 @@ $('knopDak').addEventListener('click', async ()=>{
     D.dossier.profiel=pakProfiel();
     D.dossier.contract='vast';
     D.dossier.fase='1';
-    D.dossier.panels=actief.map(p=>p.ll);      // hoekpunten voor het dakplan
+    D.dossier.panels=actief.map(p=>p.ll);      // hoekpunten voor het legplan
 
     reken();
     teaser();
@@ -315,7 +319,21 @@ function reken(){
 }
 
 /* ==================================================================
-   TEASER — drie grote cijfers gratis, de rest achter het formulier
+   HET 3D-BEELD — viewer.js laadt zichzelf pas als er iets te tonen is.
+   Zo betaalt niemand three.js-laadtijd voor een pagina die hij niet ziet.
+================================================================== */
+function toon3D(){
+  if(!D.model || !D.panelen) return;
+  const start=()=>{ if(window.Viewer3D) window.Viewer3D.toon(D.model, D.panelen); };
+  if(window.Viewer3D){ start(); return; }
+  const s=document.createElement('script');
+  s.src='/viewer.js?v=1.0.0';
+  s.onload=start;
+  document.head.appendChild(s);
+}
+
+/* ==================================================================
+   TEASER — het huis in 3D + drie grote cijfers gratis, de rest achter de gate
 ================================================================== */
 function dakplanSVG(){
   const pan=D.dossier.panels;
@@ -344,9 +362,14 @@ function teaser(){
   const dp=$('dakplan');
   if(!accuRoute && D.dossier.panels){
     dp.style.display='block';
-    dp.innerHTML=dakplanSVG()+'<div class="dp-sub">Uw dak, uit de officiële 3D-gebouwenkaart — '
+    dp.innerHTML=dakplanSVG()+'<div class="dp-sub">Het legplan — '
       +D.dossier.aantal+' panelen op de zonzijde</div>';
-  } else dp.style.display='none';
+    toon3D();                                  // het huis zelf, in 3D, erboven
+  } else {
+    dp.style.display='none';
+    const v=document.getElementById('vw3d');
+    if(v) v.style.display='none';
+  }
 
   const g=$('grote');
   if(accuRoute){
