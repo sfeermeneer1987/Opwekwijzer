@@ -14,12 +14,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 /* ==================================================================
-   OpwekWijzer — landingspagina
-   Ontwerpprincipes (conversieonderzoek 2026):
+   OpwekWijzer — landingspagina (v2.1.0)
+   Conversieprincipes:
    - één doel per pagina, geen navigatie die wegleidt
    - bewijs staat náast de claim die het onderbouwt, niet onderaan
-   - meerstaps-invoer: kleine eerste stap, contactgegevens pas ná de waarde
-   - privacytransparantie is een trust-signaal, geen kleine lettertjes
+   - waarde eerst: de cijfers zijn gratis, gegevens komen daarna
+   - de gate in twee micro-stappen: A naam+e-mail, B telefoon+belvoorkeur
    - échte urgentie (1-1-2027), nooit verzonnen schaarste of nepreviews
 ================================================================== */
 :root{
@@ -197,6 +197,13 @@ h2.vraag{font:700 20px/1.28 Archivo,sans-serif; color:var(--groen2); letter-spac
 .adviesblok b{display:block; color:var(--groen2); margin-bottom:3px}
 .succes{margin-top:16px; background:linear-gradient(180deg,#f1f9f1,#e8f4e9); border:1.5px solid #cde5cd;
   border-radius:15px; padding:15px 16px; font-size:14px; color:#22512f}
+
+/* stap B: telefoon + belvoorkeur, pas ná het rapport */
+.tik.drie{grid-template-columns:1fr 1fr 1fr}
+.belblok{margin-top:22px; background:linear-gradient(180deg,#fffdf6,#fdf5e2); border:1.5px solid #f0dfae;
+  border-radius:var(--r); padding:20px 17px}
+.belblok h3{font:700 18px/1.32 Archivo,sans-serif; color:var(--groen2); margin-bottom:7px}
+.belblok p{font-size:13.5px; color:#5c6158; margin-bottom:14px}
 
 section{padding:44px 0 6px}
 .skop{font:800 25px/1.2 Archivo,sans-serif; color:var(--groen2); letter-spacing:-.025em; text-align:center}
@@ -402,32 +409,54 @@ footer a{color:var(--groen3); font-weight:600}
         <div class="gate">
           <h3 id="gateKop">Ontvang uw volledige rapport — gratis</h3>
           <ul id="gateLijst"></ul>
-          <div class="veld"><label>Naam</label><input id="ldNaam" autocomplete="name" placeholder="Voor- en achternaam"></div>
           <div class="veldrij">
-            <div class="veld"><label>E-mail</label><input id="ldMail" type="email" autocomplete="email" placeholder="u@voorbeeld.nl"></div>
-            <div class="veld"><label>Telefoon</label><input id="ldTel" type="tel" autocomplete="tel" placeholder="06 12345678"></div>
+            <div class="veld"><label>Naam</label><input id="ldNaam" autocomplete="name" placeholder="Voor- en achternaam"></div>
           </div>
+          <div class="veld"><label>E-mail</label><input id="ldMail" type="email" autocomplete="email" placeholder="u@voorbeeld.nl"></div>
           <input type="text" id="website" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"
             style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
           <div class="avg">
             <input type="checkbox" id="ldOk">
-            <span id="avgTekst">Ik ga ermee akkoord dat OpwekWijzer mijn gegevens en deze berekening deelt met
-            maximaal één gecertificeerd installatiebedrijf in mijn regio, dat mij telefonisch of per e-mail
-            een vrijblijvend voorstel doet. Ik kan deze toestemming altijd intrekken.</span>
+            <span id="avgTekst">Ik ga ermee akkoord dat OpwekWijzer mij mijn rapport per e-mail stuurt, en
+            dat mijn berekening — alleen als ik daar zelf om vraag — gedeeld wordt met maximaal één
+            gecertificeerd installatiebedrijf in mijn regio voor een vrijblijvend voorstel. Ik kan deze
+            toestemming altijd intrekken.</span>
           </div>
-          <button class="knop amber" id="knopLead">Toon mijn rapport
+          <button class="knop amber" id="knopLead">Toon mijn rapport &amp; mail het mij
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
           <div class="fout" id="foutLead"></div>
-          <div class="klein">Eén bedrijf, nooit een lijst. Geen nieuwsbrief, geen doorverkoop, geen verkoper
-            aan de deur. Lees onze <a href="/privacy">privacyverklaring</a> · privacy@opwekwijzer.nl</div>
+          <div class="klein">Geen telefoonnummer nodig. Geen nieuwsbrief, geen doorverkoop, geen verkoper aan
+            de deur — u beslist zelf of u een voorstel wilt. Lees onze
+            <a href="/privacy">privacyverklaring</a> · privacy@opwekwijzer.nl</div>
         </div>
         <button class="terug" data-naar="stap0">← opnieuw beginnen</button>
       </div>
 
       <div class="stap rapport" id="stapRapport">
-        <div class="succes" id="succes"><b>Gelukt!</b> Uw rapport staat hieronder. Eén gecertificeerd
-          installatiebedrijf uit uw regio neemt binnen 1 werkdag contact met u op voor een vrijblijvend voorstel.</div>
+        <div class="succes" id="succes"><b>Klaar — hier is uw rapport.</b> We sturen het ook naar uw e-mail,
+          zodat u het rustig kunt teruglezen of doorsturen.</div>
         <div id="rapportBody"></div>
+
+        <div class="belblok" id="belBlok" style="display:none">
+          <h3>Wilt u dit ook echt laten uitvoeren?</h3>
+          <p>Wij leggen uw berekening voor aan <b>één</b> gecertificeerd installatiebedrijf uit uw regio.
+          Die belt u voor een vrijblijvend voorstel — en kan meteen meekijken naar schaduw, meterkast en
+          de exacte prijs. <b>U bepaalt wanneer.</b></p>
+          <div class="tikkop">Wanneer schikt het om gebeld te worden?</div>
+          <div class="tik drie" id="tkBel">
+            <button data-v="vandaag" data-t="vandaag nog" class="aan">Zo snel mogelijk</button>
+            <button data-v="avond" data-t="op een avond">'s Avonds</button>
+            <button data-v="weekend" data-t="in het weekend">In het weekend</button>
+          </div>
+          <div class="veld"><label>Telefoonnummer</label>
+            <input id="ldTel" type="tel" autocomplete="tel" inputmode="tel" placeholder="06 12345678"></div>
+          <button class="knop amber" id="knopBel">Ja, laat één installateur mij bellen
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+          <div class="fout" id="foutBel"></div>
+          <div class="klein">Eén bedrijf, nooit een lijst. Wij bellen u zelf nooit, en u kunt uw toestemming
+            altijd intrekken.</div>
+        </div>
+
         <div class="klein" style="margin-top:16px">Deze berekening is een goed onderbouwde indicatie op basis
         van officiële bronnen (3D BAG, PVGIS, marktprijspeil), geen offerte. Werkelijke prijzen en opbrengsten
         kunnen afwijken; het installatiebedrijf maakt een exact voorstel voor uw situatie.</div>
@@ -506,9 +535,8 @@ footer a{color:var(--groen3); font-weight:600}
       <p>Nee. Uw gegevens gaan naar <b>maximaal één</b> bedrijf, dat binnen één werkdag contact opneemt. Wij
       verkopen uw gegevens niet door aan meerdere partijen en zetten u nergens op een lijst.</p></details>
     <details class="op"><summary>Moet ik mijn gegevens geven om iets te zien?</summary>
-      <p>Nee. Het aantal panelen, uw jaaropbrengst, uw besparing en de terugverdientijd ziet u <b>vóór</b> het
-      formulier. Pas als u het volledige rapport wilt — met het accu-advies in specificaties — vragen we uw
-      gegevens.</p></details>
+      <p>Nee. Het aantal panelen, uw besparing en de terugverdientijd ziet u <b>vóór</b> het formulier. En uw
+      telefoonnummer vragen we pas als u zelf zegt dat u een voorstel wilt — niet eerder.</p></details>
     <details class="op"><summary>Hoe nauwkeurig is dit?</summary>
       <p>De dakvorm komt uit de officiële 3D-gebouwenkaart en de opbrengst uit de EU-database PVGIS, per dakvlak
       doorgerekend. Dat is aanzienlijk nauwkeuriger dan een schatting op postcode — maar het blijft een
@@ -534,7 +562,7 @@ footer a{color:var(--groen3); font-weight:600}
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
   <div class="onder-knop">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>
-    Geen account · geen kosten · gegevens pas ná de berekening
+    Geen account · geen kosten · geen telefoonnummer nodig
   </div>
 </div>
 
@@ -608,6 +636,6 @@ document.querySelectorAll('[data-naar-funnel]').forEach(function(b){
 </script>
 
 <script src="/roof.js?v=3.8.1"></script>
-<script src="/opwek.js?v=1.1.0"></script>
+<script src="/opwek.js?v=1.2.0"></script>
 </body>
 </html>
