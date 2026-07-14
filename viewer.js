@@ -1,5 +1,5 @@
 /* ==================================================================
-   OpwekWijzer — viewer.js  (v1.0.1)
+   OpwekWijzer — viewer.js  (v1.0.2)
    Het echte pand in 3D, met de panelen die we net hebben gelegd.
 
    Bewust klein gehouden: geen bedieningspaneel, geen instellingen. Dit is
@@ -11,9 +11,11 @@
    - panel.c3   : de vier hoekpunten van elk paneel, ook in RD+NAP
    Three.js rekent met y omhoog, dus: X = x-cx, Y = z-minz, Z = -(y-cy).
 
-   v1.0.1: de camera rekent zijn afstand uit de omhullende bol van het model en
-   de gezichtshoek. De oude vuistregel (grootste maat x 1,55) liet een lang
-   rijtjespand half buiten beeld vallen.
+   v1.0.1: camera-afstand uit de omhullende bol i.p.v. een vuistregel.
+   v1.0.2: setSize mocht de CSS-maat van het canvas niet aanpassen. Op een
+           telefoon met pixelRatio 2 werd het canvas dan twee keer zo groot als
+           de bak eromheen — je zag één kwart, en het pand stond rechtsonder.
+           Nu vult het canvas de bak, punt.
 ================================================================== */
 window.Viewer3D = (function(){
 "use strict";
@@ -81,14 +83,14 @@ async function toon(model, panelen){
 
   /* ---- het gebouw: dak, gevel en grond apart ---- */
   function bouw(soort, kleur){
-    const pos=[];
+    const punten=[];
     model.tris.forEach(t=>{
       if(t.type!==soort) return;
-      [t.a,t.b,t.c].forEach(p=>{ const q=P(p); pos.push(q[0],q[1],q[2]); });
+      [t.a,t.b,t.c].forEach(p=>{ const q=P(p); punten.push(q[0],q[1],q[2]); });
     });
-    if(!pos.length) return;
+    if(!punten.length) return;
     const g=new T.BufferGeometry();
-    g.setAttribute('position', new T.Float32BufferAttribute(pos,3));
+    g.setAttribute('position', new T.Float32BufferAttribute(punten,3));
     g.computeVertexNormals();
     scene.add(new T.Mesh(g, new T.MeshLambertMaterial({
       color:kleur, side:T.DoubleSide, flatShading:true})));
@@ -99,22 +101,22 @@ async function toon(model, panelen){
 
   /* ---- de panelen: exact de vlakken die we hebben gelegd ---- */
   const aan=(panelen||[]).filter(p=>!p.off && p.c3);
-  const pos=[], lijn=[];
+  const vlak=[], lijn=[];
   aan.forEach(p=>{
     const q=p.c3.map(P);
     // een paar centimeter boven het dak, anders knipperen paneel en pan door
     // elkaar heen (z-fighting)
     const n=p.n ? [p.n[0], p.n[2], -p.n[1]] : [0,1,0];
     const q2=q.map(v=>[v[0]+n[0]*0.06, v[1]+n[1]*0.06, v[2]+n[2]*0.06]);
-    [[0,1,2],[0,2,3]].forEach(t=>t.forEach(i=>pos.push(q2[i][0],q2[i][1],q2[i][2])));
+    [[0,1,2],[0,2,3]].forEach(t=>t.forEach(i=>vlak.push(q2[i][0],q2[i][1],q2[i][2])));
     for(let i=0;i<4;i++){
       const a=q2[i], b=q2[(i+1)%4];
       lijn.push(a[0],a[1],a[2], b[0],b[1],b[2]);
     }
   });
-  if(pos.length){
+  if(vlak.length){
     const g=new T.BufferGeometry();
-    g.setAttribute('position', new T.Float32BufferAttribute(pos,3));
+    g.setAttribute('position', new T.Float32BufferAttribute(vlak,3));
     g.computeVertexNormals();
     scene.add(new T.Mesh(g, new T.MeshLambertMaterial({
       color:0x101c2b, side:T.DoubleSide, flatShading:true, emissive:0x0a1420})));
@@ -132,11 +134,7 @@ async function toon(model, panelen){
   vul.position.set(25, 12, -30);
   scene.add(vul);
 
-  /* ---- camera: het pand PAST, wat voor pand het ook is ----
-     We meten de omhullende bol van alles wat in beeld staat en rekenen daaruit
-     de afstand terug die nodig is om die bol precies in de gezichtshoek te
-     vangen (verticaal én horizontaal — op een smal telefoonscherm is de
-     horizontale hoek de krappe).                                            */
+  /* ---- camera: het pand past, wat voor pand het ook is ---- */
   const box=new T.Box3().setFromObject(scene);
   const mid=box.getCenter(new T.Vector3());
   const bol=box.getBoundingSphere(new T.Sphere()).radius || 12;
@@ -146,18 +144,22 @@ async function toon(model, panelen){
 
   renderer=new T.WebGLRenderer({antialias:true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+  // het canvas vult de bak — hier ging het mis: zonder deze regels bepaalt de
+  // pixelRatio de zichtbare maat, en zie je op een telefoon een uitsnede
+  renderer.domElement.style.cssText='display:block;width:100%;height:100%';
   doek.appendChild(renderer.domElement);
 
-  let afstand=bol*2.4;                       // wordt hieronder exact gezet
-  const ooghoek=28*Math.PI/180;              // vaste, natuurlijke kijkhoek
+  let afstand=bol*2.4;
+  const ooghoek=28*Math.PI/180;
   let hoek=-0.6, sleep=false, vorigeX=0, draai=true;
 
   function zet(){
     const b=doek.getBoundingClientRect();
-    const w=Math.max(1, b.width), h=Math.max(1, b.height);
-    renderer.setSize(w,h,false);
+    const w=Math.max(1, Math.round(b.width)), h=Math.max(1, Math.round(b.height));
+    renderer.setSize(w, h);                  // three mag de CSS-maat wel zetten
+    renderer.domElement.style.width='100%';
+    renderer.domElement.style.height='100%';
     camera.aspect=w/h;
-    camera.updateProjectionMatrix();
 
     const vFov=FOV*Math.PI/180;
     const hFov=2*Math.atan(Math.tan(vFov/2)*camera.aspect);
@@ -190,11 +192,11 @@ async function toon(model, panelen){
   (function teken(){
     stop=requestAnimationFrame(teken);
     if(draai) hoek += 0.0022;
-    const vlak=Math.cos(ooghoek)*afstand;    // horizontale straal
+    const straal=Math.cos(ooghoek)*afstand;
     camera.position.set(
-      mid.x + Math.sin(hoek)*vlak,
+      mid.x + Math.sin(hoek)*straal,
       mid.y + Math.sin(ooghoek)*afstand,
-      mid.z + Math.cos(hoek)*vlak
+      mid.z + Math.cos(hoek)*straal
     );
     camera.lookAt(mid);
     renderer.render(scene, camera);
