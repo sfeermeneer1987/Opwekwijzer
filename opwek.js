@@ -1,12 +1,16 @@
 /* ==================================================================
-   OpwekWijzer — opwek.js  (v1.4.0)
-   De consumentenmotor. Bewust ZELFSTANDIG: alleen roof.js wordt
-   hergebruikt (het 3D-dak), verder niets.
+   OpwekWijzer — opwek.js  (v1.5.0)
+   De consumentenmotor. Bewust ZELFSTANDIG: alleen roof.js (3D-dak),
+   viewer.js (het beeld) en accu.js (het omslagpunt) worden bijgeladen.
 
    Bronnen in de berekening:
    - 3D BAG (Kadaster/TU Delft): het echte dak, per vlak helling+richting
    - PVGIS (EU JRC): opbrengst per dakvlak, via onze eigen proxy
    - Salderen stopt 1-1-2027 (Rijksoverheid): we rekenen de situatie erna
+
+   v1.5.0: de accu is niet langer een extraatje. accu.js rekent hem door met
+   terugleverkosten — en dat is het echte omslagpunt. Plus: het rapport is
+   te downloaden als PDF.
 ================================================================== */
 (function(){
 "use strict";
@@ -66,6 +70,15 @@ function fout(id, tekst){
   f.textContent=tekst; f.classList.add('on');
   setTimeout(()=>f.classList.remove('on'), 8000);
 }
+// een los bestand bijladen, pas op het moment dat we het nodig hebben
+function laadScript(src, vlag){
+  if(window[vlag]) return Promise.resolve();
+  return new Promise(ok=>{
+    const s=document.createElement('script');
+    s.src=src; s.onload=ok; s.onerror=ok;
+    document.head.appendChild(s);
+  });
+}
 
 /* ---------------- de staat van dit bezoek ---------------- */
 const D={route:null, dossier:{}, leadId:null, naam:null, mail:null, model:null, panelen:null};
@@ -91,12 +104,6 @@ const pakFase     = tikgroep('tkFase');
 /* ==================================================================
    ROUTE A — zonnepanelen (en 'beide'): adres -> echt dak -> opbrengst
 ================================================================== */
-
-/* ---- gereedschap voor adres -> pand.
-   Zelfde route als de Watt-Piek-planner, die in de praktijk bewezen is:
-   geocoderen bij PDOK, en het pand ophalen uit de BAG-WFS op coördinaat.
-   De lookup-service gaf geen betrouwbaar pandidentificatie terug — daar zat
-   de fout: het adres werd wel gevonden, het pand niet.                     ---- */
 async function haalJson(url, ms){
   const ctl=new AbortController();
   const t=setTimeout(()=>ctl.abort(), ms||9000);
@@ -134,8 +141,8 @@ function pandNummer(f){
   return null;
 }
 
-// Het adrespunt (verblijfsobject) ligt per definitie IN het pand. We vragen de
-// BAG-panden rond dat punt op en pakken het pand waar het punt binnenvalt.
+// Het adrespunt ligt per definitie IN het pand. We vragen de BAG-panden rond dat
+// punt op en pakken het pand waar het punt binnenvalt.
 async function vindPand(lat,lng){
   const m=toMerc(lat,lng), d=6;
   const url='https://service.pdok.nl/lv/bag/wfs/v2_0?service=WFS&version=2.0.0&request=GetFeature'
@@ -252,7 +259,8 @@ $('knopAccu').addEventListener('click', ()=>{
 });
 
 /* ==================================================================
-   DE REKENSOM — bewust eenvoudig en uitlegbaar (indicatie, geen offerte)
+   DE REKENSOM — panelen. De accu wordt door accu.js gedaan, want die
+   heeft terugleverkosten nodig en dat is een heel ander verhaal.
 ================================================================== */
 function zelfDeel(){
   const basis=BASIS_ZELF[D.dossier.profiel]||0.34;
@@ -297,43 +305,31 @@ function reken(){
   const zelf0=Math.round(D.dossier.opwek*zelfDeel());
   const g0=geld(zelf0,0);
 
-  // accu-advies + wat hij toevoegt
   const wens=adviesAccu();
   const sp=specs('enphase', wens);
-  const batMax=Math.min(sp.cap*CYCLI*sp.C.retour, D.dossier.opwek-zelf0, Math.max(0,D.dossier.verbruik-zelf0));
-  const batKwh=Math.round(Math.max(0,batMax));
-  const gB=geld(zelf0,batKwh);
-
   const invP=INV_VOET + D.dossier.aantal*INV_PANEEL;
 
-  D.dossier.zelf0=zelf0;
+  D.dossier.zelf0=zelf0;               // accu.js rekent hierop verder
   D.dossier.besparing0=g0;
-  D.dossier.besparingB=gB;
-  D.dossier.accuExtra=gB-g0;
   D.dossier.accuWens=wens;
   D.dossier.enphase=sp;
   D.dossier.sigen=specs('sigen', wens);
   D.dossier.invPanelen=invP;
   D.dossier.tvtPanelen=tvt(g0, invP);
-  D.dossier.tvtAccu = D.dossier.accuExtra>0 ? Math.round(sp.prijs/D.dossier.accuExtra*10)/10 : null;
 }
 
 /* ==================================================================
-   HET 3D-BEELD — viewer.js laadt zichzelf pas als er iets te tonen is.
-   Zo betaalt niemand three.js-laadtijd voor een pagina die hij niet ziet.
+   HET 3D-BEELD — viewer.js laadt zichzelf pas als er iets te tonen is
 ================================================================== */
 function toon3D(){
   if(!D.model || !D.panelen) return;
-  const start=()=>{ if(window.Viewer3D) window.Viewer3D.toon(D.model, D.panelen); };
-  if(window.Viewer3D){ start(); return; }
-  const s=document.createElement('script');
-  s.src='/viewer.js?v=1.0.0';
-  s.onload=start;
-  document.head.appendChild(s);
+  laadScript('/viewer.js?v=1.0.2','Viewer3D').then(()=>{
+    if(window.Viewer3D) window.Viewer3D.toon(D.model, D.panelen);
+  });
 }
 
 /* ==================================================================
-   TEASER — het huis in 3D + drie grote cijfers gratis, de rest achter de gate
+   TEASER — het huis in 3D + drie grote cijfers, de rest achter de gate
 ================================================================== */
 function dakplanSVG(){
   const pan=D.dossier.panels;
@@ -364,7 +360,7 @@ function teaser(){
     dp.style.display='block';
     dp.innerHTML=dakplanSVG()+'<div class="dp-sub">Het legplan — '
       +D.dossier.aantal+' panelen op de zonzijde</div>';
-    toon3D();                                  // het huis zelf, in 3D, erboven
+    toon3D();
   } else {
     dp.style.display='none';
     const v=document.getElementById('vw3d');
@@ -375,16 +371,15 @@ function teaser(){
   if(accuRoute){
     const sp=D.dossier.enphase;
     g.innerHTML='<div><b>'+nl(sp.cap)+' kWh</b><span>advies-accu ('+sp.modules+' modules)</span></div>'
-      +'<div><b>+'+euro(D.dossier.accuExtra)+'</b><span>extra per jaar</span></div>'
-      +'<div><b>'+(D.dossier.tvtAccu?nl(D.dossier.tvtAccu,1)+' jr':'—')+'</b><span>accu terugverdiend</span></div>';
-    $('teaserNoot').textContent='Berekend voor uw opwek, verbruik en contract — situatie ná 2027.';
+      +'<div><b>'+nl(D.dossier.opwek)+'</b><span>kWh opwek per jaar</span></div>'
+      +'<div><b>'+nl(D.dossier.verbruik)+'</b><span>kWh verbruik per jaar</span></div>';
+    $('teaserNoot').innerHTML='In uw rapport rekenen we drie accumaten naast elkaar door — '
+      +'inclusief de <b>terugleverkosten</b> die u vanaf 2027 betaalt.';
     $('gateKop').textContent='Ontvang uw volledige accu-rapport — gratis';
-    $('gateLijst').innerHTML='<li>De complete specificatiekaart: vermogen, laadtijd, fases, noodstroom</li>'
-      +'<li>Enphase en Sigenergy eerlijk naast elkaar, met garantie in laadcycli</li>'
-      +'<li>Uw eerlijke terugverdientijd — ook als het advies is: nog even wachten</li>';
+    $('gateLijst').innerHTML='<li>5, 10 en 15 kWh naast elkaar: opbrengst, prijs, terugverdientijd</li>'
+      +'<li>Enphase en Sigenergy eerlijk vergeleken, met garantie in laadcycli</li>'
+      +'<li>Ons eerlijke advies — ook als dat is: wacht nog even</li>';
   } else {
-    // Per maand leest makkelijker dan per jaar; het totaal over 25 jaar geeft het
-    // bedrag pas gewicht. Beide getallen komen uit dezelfde berekening.
     const perMaand=Math.round(D.dossier.besparing0/12);
     const over25=Math.round(D.dossier.besparing0*21.5);   // 25 jaar, na degradatie
     D.dossier.perMaand=perMaand; D.dossier.over25=over25;
@@ -395,33 +390,31 @@ function teaser(){
       +'Opbrengst per dakvlak via EU-PVGIS · gerekend ná het einde van salderen (2027).';
     $('gateKop').textContent='Ontvang uw volledige dakrapport — gratis';
     $('gateLijst').innerHTML='<li>Opbrengst en besparing per dakvlak, met en zonder thuisbatterij</li>'
-      +'<li>Het accu-advies in échte specificaties (vermogen, laadtijd, garantie)</li>'
-      +'<li>Uw legplan en de complete berekening, ook per e-mail</li>';
+      +'<li>Drie accumaten doorgerekend én de terugleverkosten vanaf 2027</li>'
+      +'<li>Uw legplan en de complete berekening, als PDF om te bewaren</li>';
   }
   toon('stapTeaser');
 }
 
 /* ==================================================================
    DE LEAD — in twee micro-stappen.
-
-   A) naam + e-mail  -> lage drempel, hoge invulgraad. De lead wordt HIER AL
-      opgeslagen (status 'partieel'). Wie daarna afhaakt, zijn we niet kwijt.
-   B) telefoon + belvoorkeur -> we vragen geen nummer, we geven regie
-      ("wanneer schikt het?"). Kost minder invulgraad dan een kaal verplicht
-      veld, en pas dán is de lead verkoopbaar (status 'nieuw').
+   A) naam + e-mail  -> lage drempel; de lead wordt HIER AL opgeslagen.
+   B) telefoon + belvoorkeur -> pas dan is hij verkoopbaar.
 ================================================================== */
 function leadBasis(){
   const d=D.dossier, sp=d.enphase||{};
-  const kaal=Object.assign({},d); delete kaal.panels;
+  const kaal=Object.assign({},d); delete kaal.panels; delete kaal.accu;
+  const acc=d.accu && d.accu.beste;
   return {
     route:D.route,
     postcode:d.postcode||null, huisnummer:d.huisnummer||null, adres:d.adres||null,
     pand_id:d.pand_id||null,
     verbruik:d.verbruik, contract:d.contract, fase:d.fase,
     aantal_panelen:d.aantal||null, kwp:d.kwp||null, opwek:d.opwek||null,
-    besparing:(D.route==='accu'?d.accuExtra:d.besparing0)||null,
-    tvt:(D.route==='accu'?d.tvtAccu:d.tvtPanelen)||null,
-    accu_kwh:sp.cap||null, accu_modules:sp.modules||null, accu_kw:sp.kw||null,
+    besparing:d.besparing0||null,
+    tvt:d.tvtPanelen||null,
+    accu_kwh:acc?acc.cap:(sp.cap||null),
+    accu_modules:sp.modules||null, accu_kw:sp.kw||null,
     accu_merk:sp.C?sp.C.naam:null,
     dossier:kaal,
     bron:new URLSearchParams(location.search).get('utm_campaign')
@@ -430,7 +423,6 @@ function leadBasis(){
   };
 }
 
-/* ---- STAP A: naam + e-mail -> rapport vrijgeven, lead alvast vastleggen ---- */
 $('knopLead').addEventListener('click', async ()=>{
   const naam=($('ldNaam').value||'').trim();
   const mail=($('ldMail').value||'').trim();
@@ -458,7 +450,6 @@ $('knopLead').addEventListener('click', async ()=>{
   }
 });
 
-/* ---- STAP B: telefoon + belvoorkeur -> lead compleet, klaar voor de installateur ---- */
 function belStap(){
   const knop=$('knopBel'), groep=$('tkBel');
   if(!knop || knop.dataset.klaar) return;
@@ -530,9 +521,9 @@ function rapport(){
       +'<tr><td>Panelen op de zonzijde</td><td>'+d.aantal+' × '+PANEEL_WP+' Wp = '+nl(d.kwp,2)+' kWp</td></tr>'
       +'<tr class="top"><td>Opbrengst per jaar</td><td>'+nl(d.opwek)+' kWh (PVGIS, per dakvlak)</td></tr>'
       +'</table>'
-      +'<h3>Wat het oplevert (situatie ná 2027)</h3>'
+      +'<h3>Wat de panelen opleveren (situatie ná 2027)</h3>'
       +'<table class="rtab">'
-      +'<tr><td>U gebruikt zelf direct</td><td>'+nl(d.zelf0)+' kWh ('+nl(d.zelf0/d.opwek*100)+'%)</td></tr>'
+      +'<tr><td>U gebruikt zelf direct</td><td>'+nl(d.zelf0)+' kWh ('+nl(d.zelf0/Math.max(1,d.opwek)*100)+'%)</td></tr>'
       +'<tr class="top"><td>Besparing per jaar</td><td>'+euro(d.besparing0)+'</td></tr>'
       +'<tr><td>Indicatieve investering</td><td>'+euro(d.invPanelen)+' (marktpeil, incl. 0% btw)</td></tr>'
       +'<tr><td>Terugverdiend in</td><td>'+(d.tvtPanelen?nl(d.tvtPanelen,1)+' jaar':'> 25 jaar')+'</td></tr>'
@@ -542,42 +533,32 @@ function rapport(){
       +'<table class="rtab">'
       +'<tr><td>Uw opwek</td><td>'+nl(d.opwek)+' kWh per jaar</td></tr>'
       +'<tr><td>Uw verbruik</td><td>'+nl(d.verbruik)+' kWh per jaar</td></tr>'
+      +'<tr><td>U gebruikt zelf direct</td><td>'+nl(d.zelf0)+' kWh</td></tr>'
       +'<tr><td>Contract</td><td>'+(dyn?'dynamisch (uurprijzen)':'vast tarief')+'</td></tr>'
       +'</table>';
   }
 
-  h+='<h3>De thuisbatterij: wat verandert er?</h3>'
-    +'<table class="rtab">'
-    +'<tr><th></th><th>Zonder accu</th><th>Met accu ('+nl(d.enphase.cap)+' kWh)</th></tr>'
-    +'<tr><td>Besparing per jaar</td><td>'+euro(d.besparing0)+'</td><td><b>'+euro(d.besparingB)+'</b></td></tr>'
-    +'<tr class="top"><td>De accu voegt toe</td><td colspan="2">'+euro(d.accuExtra)+' per jaar · terugverdiend in '
-    +(d.tvtAccu?nl(d.tvtAccu,1)+' jaar':'—')+'</td></tr>'
-    +'</table>';
+  // Het hart van het rapport: accu.js rekent drie maten door, met terugleverkosten.
+  h+='<div id="accuBlok"></div>';
 
-  h+='<h3>Welke accu past — de specificaties</h3>'
+  h+='<h3>De twee systemen — de specificaties</h3>'
     + specTabel(d.enphase, dyn)
     + specTabel(d.sigen, dyn);
 
-  // eerlijk advies — de reden dat mensen deze tool doorsturen
-  const gr=Math.min(d.enphase.C.gar, d.enphase.C.cycli/CYCLI);
-  if(d.tvtAccu && d.tvtAccu<=gr){
-    h+='<div class="adviesblok"><b>✓ Een accu is in uw situatie rendabel</b>'
-      +'Hij verdient zichzelf terug binnen de garantieperiode. Let bij offertes vooral op de '
-      +'gegarandeerde láádcycli — daar zit het echte verschil tussen merken.</div>';
-  } else {
-    h+='<div class="adviesblok"><b>Eerlijk advies: de accu kan nog nét niet uit</b>'
-      +'Bij uw verbruik en contract duurt terugverdienen langer dan de garantie dekt. '
-      +(dyn?'':'Met een dynamisch contract wordt het beeld vaak flink beter — vraag de installateur dit door te rekenen. ')
-      +'Overweeg te wachten tot de prijzen verder dalen, of laat uw installatie alvast accu-klaar maken.</div>';
-  }
-  if(dyn && d.enphase.C.additief){
-    h+='<div class="adviesblok"><b>U heeft een dynamisch contract — let op het vermogen</b>'
-      +'De goedkoopste uren duren kort. Bij Enphase telt het vermogen op per module ('
-      +nl(d.enphase.C.kwModule,2)+' kW per stuk); bij Sigenergy bepaalt de gekozen omvormer de grens. '
-      +'Uw advies-accu laadt in '+nl(d.enphase.laadUren,1)+' uur volledig — snel genoeg om elke prijsdip te pakken.</div>';
-  }
+  h+='<button class="knop" id="knopPdf">Download dit rapport (PDF)</button>';
 
   $('rapportBody').innerHTML=h;
+
+  laadScript('/accu.js?v=1.0.0','Accu').then(()=>{
+    if(window.Accu) window.Accu.blok(D.dossier, $('accuBlok'));
+  });
+
+  const pdf=$('knopPdf');
+  if(pdf) pdf.addEventListener('click', ()=>{
+    if(!window.Accu) return;
+    window.Accu.print(D.dossier, $('rapportBody').innerHTML);
+  });
+
   const bb=$('belBlok');
   if(bb) bb.style.display='block';
   belStap();
