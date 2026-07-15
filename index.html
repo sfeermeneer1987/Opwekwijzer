@@ -11,10 +11,11 @@
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Instrument+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 /* ==================================================================
-   OpwekWijzer — landingspagina (v2.2.0)
+   OpwekWijzer — landingspagina (v3.0.0)
    Conversieprincipes:
    - één doel per pagina, geen navigatie die wegleidt
    - bewijs staat náast de claim die het onderbouwt, niet onderaan
@@ -22,6 +23,7 @@
    - de gate in twee micro-stappen: A naam+e-mail, B telefoon+belvoorkeur
    - échte urgentie (1-1-2027), nooit verzonnen schaarste of nepreviews
    - beloof niets dat de site niet doet: rapport bekijken + PDF, geen e-mail
+   - v4: de hero toont het product zelf — het demopand legt zijn eigen panelen
 ================================================================== */
 :root{
   --groen:#0d2318; --groen2:#14301f; --groen3:#1d4a2f; --mos:#2f6b45;
@@ -34,7 +36,7 @@
 }
 *{box-sizing:border-box; margin:0; padding:0}
 html{-webkit-text-size-adjust:100%; scroll-behavior:smooth}
-body{font:400 16px/1.6 Inter,system-ui,sans-serif; color:var(--inkt); background:var(--room); overflow-x:hidden}
+body{font:400 16px/1.6 'Instrument Sans',Inter,system-ui,sans-serif; color:var(--inkt); background:var(--room); overflow-x:hidden}
 .wrap{max-width:660px; margin:0 auto; padding:0 18px}
 svg{max-width:100%}
 
@@ -123,7 +125,7 @@ h2.vraag{font:700 20px/1.28 Archivo,sans-serif; color:var(--groen2); letter-spac
 .veld input:focus{outline:none; border-color:var(--accent); background:#fff; box-shadow:0 0 0 4px rgba(240,165,0,.16)}
 .tik{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px}
 .tik button{border:1.5px solid var(--lijn); background:var(--wit); border-radius:12px; padding:13px 6px;
-  font:600 13.5px/1.35 Inter,sans-serif; color:var(--inkt); cursor:pointer; transition:all .15s}
+  font:600 13.5px/1.35 'Instrument Sans',Inter,sans-serif; color:var(--inkt); cursor:pointer; transition:all .15s}
 .tik button:hover{border-color:#c9d3c6}
 .tik button.aan{border-color:var(--groen3); background:var(--groen3); color:#fff;
   box-shadow:0 3px 10px rgba(29,74,47,.28)}
@@ -131,7 +133,7 @@ h2.vraag{font:700 20px/1.28 Archivo,sans-serif; color:var(--groen2); letter-spac
   margin:4px 0 7px}
 
 .knop{display:flex; align-items:center; justify-content:center; gap:9px; width:100%; border:0; border-radius:14px;
-  padding:17px; font:700 16.5px/1 Inter,sans-serif; color:#fff; cursor:pointer; margin-top:8px;
+  padding:17px; font:700 16.5px/1 'Instrument Sans',Inter,sans-serif; color:#fff; cursor:pointer; margin-top:8px;
   background:linear-gradient(180deg,var(--mos),var(--groen3) 55%,#173c26);
   box-shadow:0 5px 16px rgba(20,48,31,.3), inset 0 1px 0 rgba(255,255,255,.16);
   transition:transform .12s, box-shadow .18s}
@@ -142,7 +144,7 @@ h2.vraag{font:700 20px/1.28 Archivo,sans-serif; color:var(--groen2); letter-spac
 .onder-knop{display:flex; align-items:center; justify-content:center; gap:6px; margin-top:11px;
   font-size:11.5px; color:var(--grijs); text-align:center}
 .onder-knop svg{width:13px; height:13px; color:var(--mos); flex:none}
-.terug{background:none; border:0; font:600 13px/1 Inter,sans-serif; color:var(--grijs); cursor:pointer;
+.terug{background:none; border:0; font:600 13px/1 'Instrument Sans',Inter,sans-serif; color:var(--grijs); cursor:pointer;
   padding:14px 0 0; text-decoration:underline}
 
 .wacht{display:none; text-align:center; padding:24px 0 4px; color:var(--grijs); font-size:13.5px}
@@ -162,8 +164,8 @@ h2.vraag{font:700 20px/1.28 Archivo,sans-serif; color:var(--groen2); letter-spac
 .grote{display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin:14px 0 6px}
 .grote div{background:var(--wit); border:1px solid var(--lijn); border-radius:15px; padding:15px 8px;
   text-align:center; box-shadow:var(--sch-s)}
-.grote b{display:block; font:800 clamp(20px,6.2vw,27px)/1.05 Archivo,sans-serif; color:var(--groen2);
-  font-variant-numeric:tabular-nums; letter-spacing:-.02em}
+.grote b{display:block; font:700 clamp(18px,5.6vw,24px)/1.1 'Spline Sans Mono',ui-monospace,monospace; color:var(--groen2);
+  font-variant-numeric:tabular-nums; letter-spacing:-.01em}
 .grote span{display:block; font-size:10px; font-weight:700; color:var(--grijs); margin-top:5px;
   text-transform:uppercase; letter-spacing:.05em; line-height:1.3}
 
@@ -193,6 +195,7 @@ h2.vraag{font:700 20px/1.28 Archivo,sans-serif; color:var(--groen2); letter-spac
 .rtab td:first-child{color:var(--grijs)}
 .rtab td:last-child{font-weight:600}
 .rtab tr.top td{background:#f6faf4; font-weight:700}
+.rtab tr.top td:last-child{font-family:'Spline Sans Mono',ui-monospace,monospace; font-size:12.5px}
 .adviesblok{background:var(--wit); border:1px solid var(--lijn); border-left:4px solid var(--accent);
   border-radius:13px; padding:13px 15px; margin:10px 0; font-size:13.5px; box-shadow:var(--sch-s)}
 .adviesblok b{display:block; color:var(--groen2); margin-bottom:3px}
@@ -245,7 +248,7 @@ section{padding:44px 0 6px}
 details{background:var(--wit); border:1px solid var(--lijn); border-radius:14px; box-shadow:var(--sch-s);
   overflow:hidden}
 details[open]{border-color:#e3d9b9}
-summary{list-style:none; cursor:pointer; padding:15px 16px; font:600 14.5px/1.4 Inter,sans-serif;
+summary{list-style:none; cursor:pointer; padding:15px 16px; font:600 14.5px/1.4 'Instrument Sans',Inter,sans-serif;
   color:var(--groen2); display:flex; align-items:center; justify-content:space-between; gap:12px}
 summary::-webkit-details-marker{display:none}
 summary::after{content:'+'; font:700 19px/1 Archivo,sans-serif; color:var(--accent); flex:none; transition:transform .2s}
@@ -277,6 +280,33 @@ footer{margin-top:40px; padding:22px 0 40px; border-top:1px solid var(--lijn); f
 footer b{color:var(--groen3)}
 footer a{color:var(--groen3); font-weight:600}
 .fbron{margin-top:8px; font-size:10.5px; color:#9b9f97}
+
+/* --- v4: het demopand — de hero toont het product zelf --- */
+.h3d{position:relative; margin-top:22px; height:300px; border-radius:20px; overflow:hidden;
+  background:radial-gradient(95% 130% at 80% -12%, rgba(255,201,61,.18), transparent 55%),
+             linear-gradient(180deg,#143a27,#0b2015);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.09), 0 18px 44px rgba(0,0,0,.28)}
+.h3d canvas{opacity:0; transition:opacity .9s ease}
+.h3d.aan canvas{opacity:1}
+.h3d .fb{position:absolute; inset:0; display:flex; align-items:flex-end; justify-content:center;
+  padding-bottom:4px; transition:opacity .6s ease}
+.h3d.aan .fb{opacity:0}
+.h3dTeller{position:absolute; left:12px; top:12px; z-index:2; display:flex; align-items:baseline; gap:8px;
+  background:rgba(8,24,15,.6); border:1px solid rgba(255,255,255,.16); backdrop-filter:blur(8px);
+  color:#eaf3ec; font:600 12.5px/1.2 'Instrument Sans',Inter,sans-serif; padding:9px 12px; border-radius:12px}
+.h3dTeller b{font:700 24px/1 'Spline Sans Mono',ui-monospace,monospace; color:var(--accent2);
+  font-variant-numeric:tabular-nums; min-width:2ch; text-align:right}
+.h3dSub{position:absolute; right:12px; bottom:12px; z-index:2; max-width:62%; text-align:right;
+  font:600 11px/1.4 'Instrument Sans',Inter,sans-serif; color:rgba(255,255,255,.8);
+  background:rgba(0,0,0,.32); padding:5px 9px; border-radius:8px}
+.hero .knop{max-width:430px}
+
+/* --- v4: liniaal-scheiders — wij meten --- */
+.liniaal{height:12px; max-width:230px; margin:0 auto 16px; position:relative; opacity:.75}
+.liniaal::before{content:''; position:absolute; left:0; right:0; bottom:0; height:1px; background:#d5d0c0}
+.liniaal i{position:absolute; left:0; right:0; bottom:0}
+.liniaal i:first-child{height:6px; background:repeating-linear-gradient(90deg,#c7c1ae 0 1px,transparent 1px 12px)}
+.liniaal i:last-child{height:12px; background:repeating-linear-gradient(90deg,#aaa392 0 1px,transparent 1px 60px)}
 </style>
 </head>
 <body>
@@ -296,6 +326,29 @@ footer a{color:var(--groen3); font-weight:600}
     <p class="lead">Wij rekenen uw <b>échte dak</b> door: vorm, helling en richting komen uit de
       3D-gebouwenkaart van het Kadaster. Geen schatting, geen verkooppraat —
       <b>ook als iets niet uit kan, zeggen we het.</b></p>
+
+    <div class="h3d" id="h3d">
+      <div class="fb">
+        <svg viewBox="0 0 340 230" width="86%" style="max-width:420px" aria-hidden="true">
+          <ellipse cx="170" cy="207" rx="118" ry="11" fill="rgba(0,0,0,.35)"/>
+          <polygon points="70,118 170,46 270,118" fill="#8d6a52"/>
+          <rect x="224" y="58" width="13" height="34" fill="#7c5a48"/>
+          <rect x="84" y="118" width="172" height="88" fill="#d9d2c5"/>
+          <rect x="120" y="152" width="26" height="54" fill="#233327"/>
+          <rect x="170" y="152" width="30" height="26" fill="#9fb4c4"/>
+          <rect x="212" y="152" width="30" height="26" fill="#9fb4c4"/>
+          <g transform="translate(96,56) rotate(-19)">
+            <rect width="132" height="62" rx="6" fill="#101c2b" stroke="#f0a500" stroke-width="1.6"/>
+            <path d="M33 0V62 M66 0V62 M99 0V62 M0 31H132" stroke="#f0a500" stroke-width="1" opacity=".7" fill="none"/>
+          </g>
+        </svg>
+      </div>
+      <div class="h3dTeller"><b id="h3dNum">14</b><span>panelen passen op dit dak</span></div>
+      <div class="h3dSub">Zo ziet u het straks van úw huis — met uw echte dak uit de 3D-gebouwenkaart</div>
+    </div>
+
+    <button class="knop amber" data-naar-funnel>Bereken mijn dak — gratis
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
 
     <div class="bewijsrij">
       <span class="bw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg>Uw echte dak (3D BAG, Kadaster)</span>
@@ -468,6 +521,7 @@ footer a{color:var(--groen3); font-weight:600}
 </div>
 
 <section>
+  <div class="liniaal"><i></i><i></i></div>
   <h2 class="skop op">In 1 minuut van adres naar antwoord</h2>
   <p class="suit op">Geen offerteformulier waar u niets voor terugkrijgt. Eerst het antwoord, dan pas de keuze.</p>
   <div class="stappen">
@@ -486,6 +540,7 @@ footer a{color:var(--groen3); font-weight:600}
 </section>
 
 <section>
+  <div class="liniaal"><i></i><i></i></div>
   <h2 class="skop op">Waarom dit anders is dan de rest</h2>
   <p class="suit op">De meeste rekentools vragen ú om uw dak te schatten. Wij kijken naar het echte dak.</p>
   <div class="waarom">
@@ -526,6 +581,7 @@ footer a{color:var(--groen3); font-weight:600}
 </section>
 
 <section>
+  <div class="liniaal"><i></i><i></i></div>
   <h2 class="skop op">Eerlijk antwoord op de vragen die u nu heeft</h2>
   <div class="faq">
     <details class="op"><summary>Is dit echt gratis? Wat is de vangst?</summary>
@@ -637,6 +693,7 @@ document.querySelectorAll('[data-naar-funnel]').forEach(function(b){
 </script>
 
 <script src="/roof.js?v=3.8.1"></script>
-<script src="/opwek.js?v=1.6.0"></script>
+<script src="/opwek.js?v=1.6.1"></script>
+<script src="/hero3d.js?v=1.0.0" defer></script>
 </body>
 </html>
