@@ -1,5 +1,5 @@
 /* ==================================================================
-   OpwekWijzer — hero3d.js  (v2.0.0)
+   OpwekWijzer — hero3d.js  (v2.1.0)
    Het demopand in de hero: een Nederlands rijtjeshuis waarop de panelen
    zich één voor één leggen, met een meetikkende teller.
 
@@ -10,6 +10,11 @@
      geen downloads, geen licenties
    - kozijnen met diepte, spiegelend glas, dakgoot, nokvorst, tuintje
    - ACES-tonemapping + omgevingsreflectie voor filmisch licht
+
+   v2.1.0 — het slotstuk:
+   - na het laatste paneel verschijnt de thuisbatterij aan de gevel,
+     met een amberkleurig lampje en het label "+ thuisbatterij"
+   - bij de reset van de loop verdwijnt hij netjes mee
 
    Zuinig by design (ongewijzigd):
    - three.js laadt pas als de browser niets te doen heeft (idle)
@@ -284,6 +289,39 @@ function bouw(){
     panelen.push(gr);
   }
 
+  /* ---- de thuisbatterij: het slotstuk van de choreografie ----
+     Een wandkast aan de voorgevel, links van de deur, met een amberkleurig
+     lampje. Hij verschijnt pas als het laatste paneel ligt: eerst het dak,
+     dan de accu — precies de volgorde die we mensen ook adviseren.        */
+  const accu=new T.Group();
+  const accuMats=[];
+  function accuDeel(geo, mat, x, y, z){
+    mat.transparent=true; mat.opacity=0; accuMats.push(mat);
+    const m=new T.Mesh(geo, mat);
+    m.position.set(x,y,z);
+    m.castShadow=true; m.receiveShadow=true;
+    accu.add(m);
+    return m;
+  }
+  accuDeel(new T.BoxGeometry(.62,.92,.17),
+    new T.MeshStandardMaterial({color:0x1b2126, metalness:.35, roughness:.4}), 0,0,0);
+  accuDeel(new T.BoxGeometry(.54,.84,.02),
+    new T.MeshStandardMaterial({color:0x232b31, metalness:.3, roughness:.28, envMapIntensity:1.1}), 0,0,.09);
+  const accuLed=accuDeel(new T.BoxGeometry(.05,.5,.012),
+    new T.MeshStandardMaterial({color:0x2a1c00, emissive:0xf0a500, emissiveIntensity:0, roughness:.4}), -.17,.06,.10);
+  accu.position.set(-3.15, 1.12, Dp/2+.10);
+  accu.scale.setScalar(0.001);
+  scene.add(accu);
+
+  // het label "+ thuisbatterij" hoort bij de accu, dus hero3d maakt het zelf
+  const badge=document.createElement('div');
+  badge.textContent='+ thuisbatterij';
+  badge.style.cssText='position:absolute;left:12px;top:64px;z-index:2;opacity:0;'
+    +'font:700 11.5px/1.2 \'Instrument Sans\',Inter,sans-serif;color:#3a2a00;'
+    +'background:linear-gradient(180deg,#ffc93d,#f0a500);padding:6px 10px;border-radius:9px;'
+    +'box-shadow:0 4px 12px rgba(240,165,0,.35)';
+  bak.appendChild(badge);
+
   /* ---- licht: warme zon mét schaduw, koele tegenhanger, zachte hemel ---- */
   scene.add(new T.AmbientLight(0xbcd2c0, .32));
   scene.add(new T.HemisphereLight(0xd6ecf6, 0x30503a, .5));
@@ -331,8 +369,8 @@ function bouw(){
   }
   zet(); addEventListener('resize', zet);
 
-  /* ---- de choreografie: leggen → vasthouden → opnieuw ---- */
-  const STAP=380, DUUR=300, RUST=3400, WEG=450, oog=24*Math.PI/180;
+  /* ---- de choreografie: leggen → accu → vasthouden → opnieuw ---- */
+  const STAP=380, DUUR=300, ACCU_D=650, RUST=3400, WEG=450, oog=24*Math.PI/180;
   const ease=p=>1-Math.pow(1-p,3);
   let fase='leg', t0=performance.now()+700, hoek=0.9;
   let zichtbaar=true, actief=true, getoond=false;
@@ -366,7 +404,16 @@ function bouw(){
         if(p>=0.5) zicht++;
       });
       teller(zicht);
-      if(klaarN>=panelen.length){ fase='rust'; t0=nu; }
+      if(klaarN>=panelen.length){ fase='accu'; t0=nu; }
+    } else if(fase==='accu'){
+      // het slotakkoord: de thuisbatterij verschijnt aan de gevel
+      const p=Math.max(0, Math.min(1, t/ACCU_D));
+      const e=ease(p);
+      accu.scale.setScalar(Math.max(0.001, 0.55+0.45*e));
+      accuMats.forEach(m=>{ m.opacity=p; });
+      accuLed.material.emissiveIntensity=1.6*e;
+      badge.style.opacity=String(p);
+      if(p>=1){ fase='rust'; t0=nu; }
     } else if(fase==='rust'){
       if(t>RUST){ fase='weg'; t0=nu; }
     } else { // weg
@@ -375,8 +422,14 @@ function bouw(){
         ch.material.opacity=1-p;
         if(ch.isMesh) ch.castShadow = p<0.5;
       }); });
+      accuMats.forEach(m=>{ m.opacity=1-p; });
+      accuLed.material.emissiveIntensity=1.6*(1-p);
+      badge.style.opacity=String(1-p);
       if(p>=1){
         panelen.forEach(gr=>{ gr.scale.setScalar(0.001); });
+        accu.scale.setScalar(0.001);
+        accuLed.material.emissiveIntensity=0;
+        badge.style.opacity='0';
         teller(0);
         fase='leg'; t0=nu+500;
       }
