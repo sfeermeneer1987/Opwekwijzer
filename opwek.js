@@ -1,5 +1,5 @@
 /* ==================================================================
-   OpwekWijzer — opwek.js  (v1.5.0)
+   OpwekWijzer — opwek.js  (v1.6.0)
    De consumentenmotor. Bewust ZELFSTANDIG: alleen roof.js (3D-dak),
    viewer.js (het beeld) en accu.js (het omslagpunt) worden bijgeladen.
 
@@ -8,9 +8,10 @@
    - PVGIS (EU JRC): opbrengst per dakvlak, via onze eigen proxy
    - Salderen stopt 1-1-2027 (Rijksoverheid): we rekenen de situatie erna
 
-   v1.5.0: de accu is niet langer een extraatje. accu.js rekent hem door met
-   terugleverkosten — en dat is het echte omslagpunt. Plus: het rapport is
-   te downloaden als PDF.
+   v1.5.0: accu.js rekent de accu door met terugleverkosten + PDF-download.
+   v1.6.0: enter-toets werkt overal, de accu-teaser toont wat teruglevering
+   kóst (de haak), gate-teksten beloven niets dat de site niet doet, en
+   foutmeldingen plakken geen punt meer achter een vraagteken.
 ================================================================== */
 (function(){
 "use strict";
@@ -21,6 +22,7 @@ const TERUG={vast:0.0025, dyn:0.052};
 const PANEEL_WP=450, PW=1.13, PH=1.72;
 const INV_VOET=1600, INV_PANEEL=270;      // indicatieve marktprijs (Milieu Centraal-peil)
 const CYCLI=280, DEG=0.0045, JAREN=25;
+const TERUGKOST=0.11;             // €/kWh terugleverkosten, marktpeil (teaser; rapport is instelbaar)
 
 // zelfverbruik zonder accu: aandeel van de opwek dat direct zelf gebruikt wordt
 const BASIS_ZELF={weg:0.34, thuis:0.45};
@@ -79,6 +81,15 @@ function laadScript(src, vlag){
     document.head.appendChild(s);
   });
 }
+// enter = klikken. Zonder dit doet het “ga”-knopje op het mobiele toetsenbord niets.
+function enter(velden, knop){
+  velden.forEach(id=>{
+    const el=$(id); if(!el) return;
+    el.addEventListener('keydown', e=>{
+      if(e.key==='Enter'){ e.preventDefault(); $(knop).click(); }
+    });
+  });
+}
 
 /* ---------------- de staat van dit bezoek ---------------- */
 const D={route:null, dossier:{}, leadId:null, naam:null, mail:null, model:null, panelen:null};
@@ -100,6 +111,10 @@ const pakOpwek    = tikgroep('tkOpwek');
 const pakVerbruik2= tikgroep('tkVerbruik2');
 const pakContract = tikgroep('tkContract');
 const pakFase     = tikgroep('tkFase');
+
+enter(['pc','nr'],'knopDak');
+enter(['ldNaam','ldMail'],'knopLead');
+enter(['ldTel'],'knopBel');
 
 /* ==================================================================
    ROUTE A — zonnepanelen (en 'beide'): adres -> echt dak -> opbrengst
@@ -237,7 +252,8 @@ $('knopDak').addEventListener('click', async ()=>{
     reken();
     teaser();
   }catch(e){
-    fout('foutAdres','Dat lukte niet: '+(e.message||e)+'.');
+    const m=String(e.message||e);
+    fout('foutAdres','Dat lukte niet: '+m+(/[.!?…]$/.test(m)?'':'.'));
   }finally{
     $('wachtDak').classList.remove('on');
   }
@@ -370,12 +386,16 @@ function teaser(){
   const g=$('grote');
   if(accuRoute){
     const sp=D.dossier.enphase;
+    // De haak: niet terugkaatsen wat de bezoeker net intikte, maar tonen wat
+    // teruglevering straks kóst — het bedrag dat een accu wegneemt.
+    const overschot=Math.max(0, D.dossier.opwek-D.dossier.zelf0);
+    const kost=Math.round(overschot*TERUGKOST);
     g.innerHTML='<div><b>'+nl(sp.cap)+' kWh</b><span>advies-accu ('+sp.modules+' modules)</span></div>'
-      +'<div><b>'+nl(D.dossier.opwek)+'</b><span>kWh opwek per jaar</span></div>'
-      +'<div><b>'+nl(D.dossier.verbruik)+'</b><span>kWh verbruik per jaar</span></div>';
-    $('teaserNoot').innerHTML='In uw rapport rekenen we drie accumaten naast elkaar door — '
-      +'inclusief de <b>terugleverkosten</b> die u vanaf 2027 betaalt.';
-    $('gateKop').textContent='Ontvang uw volledige accu-rapport — gratis';
+      +'<div><b>'+nl(overschot)+'</b><span>kWh overschot per jaar</span></div>'
+      +'<div><b>− '+euro(kost)+'</b><span>terugleverkosten per jaar, zonder accu</span></div>';
+    $('teaserNoot').innerHTML='In uw rapport: drie accumaten naast elkaar — en hoe u dit bedrag wegneemt.<br>'
+      +'Gerekend met € 0,11/kWh terugleverkosten (marktpeil) — in het rapport instelbaar.';
+    $('gateKop').textContent='Bekijk uw volledige accu-rapport — gratis';
     $('gateLijst').innerHTML='<li>5, 10 en 15 kWh naast elkaar: opbrengst, prijs, terugverdientijd</li>'
       +'<li>Enphase en Sigenergy eerlijk vergeleken, met garantie in laadcycli</li>'
       +'<li>Ons eerlijke advies — ook als dat is: wacht nog even</li>';
@@ -388,7 +408,7 @@ function teaser(){
       +'<div><b>'+(D.dossier.tvtPanelen?nl(D.dossier.tvtPanelen,1)+' jr':'—')+'</b><span>terugverdiend</span></div>';
     $('teaserNoot').innerHTML='Over 25 jaar levert dit dak u naar schatting <b>'+euro(over25)+'</b> op.<br>'
       +'Opbrengst per dakvlak via EU-PVGIS · gerekend ná het einde van salderen (2027).';
-    $('gateKop').textContent='Ontvang uw volledige dakrapport — gratis';
+    $('gateKop').textContent='Bekijk uw volledige dakrapport — gratis';
     $('gateLijst').innerHTML='<li>Opbrengst en besparing per dakvlak, met en zonder thuisbatterij</li>'
       +'<li>Drie accumaten doorgerekend én de terugleverkosten vanaf 2027</li>'
       +'<li>Uw legplan en de complete berekening, als PDF om te bewaren</li>';
@@ -446,7 +466,7 @@ $('knopLead').addEventListener('click', async ()=>{
     rapport();
   }catch(e){
     fout('foutLead','Er ging iets mis bij het versturen. Probeer het nog eens.');
-    knop.disabled=false; knop.textContent='Toon mijn rapport';
+    knop.disabled=false; knop.textContent='Toon mijn volledige rapport';
   }
 });
 
