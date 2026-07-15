@@ -1,5 +1,5 @@
 /* ==================================================================
-   OpwekWijzer — opwek.js  (v1.6.0)
+   OpwekWijzer — opwek.js  (v1.6.1)
    De consumentenmotor. Bewust ZELFSTANDIG: alleen roof.js (3D-dak),
    viewer.js (het beeld) en accu.js (het omslagpunt) worden bijgeladen.
 
@@ -12,6 +12,7 @@
    v1.6.0: enter-toets werkt overal, de accu-teaser toont wat teruglevering
    kóst (de haak), gate-teksten beloven niets dat de site niet doet, en
    foutmeldingen plakken geen punt meer achter een vraagteken.
+   v1.6.1: teaser-viewer naar v1.1.0 — de panelen leggen zichzelf, met teller.
 ================================================================== */
 (function(){
 "use strict";
@@ -339,7 +340,7 @@ function reken(){
 ================================================================== */
 function toon3D(){
   if(!D.model || !D.panelen) return;
-  laadScript('/viewer.js?v=1.0.2','Viewer3D').then(()=>{
+  laadScript('/viewer.js?v=1.1.0','Viewer3D').then(()=>{
     if(window.Viewer3D) window.Viewer3D.toon(D.model, D.panelen);
   });
 }
