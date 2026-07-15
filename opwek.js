@@ -1,5 +1,5 @@
 /* ==================================================================
-   OpwekWijzer — opwek.js  (v1.6.2)
+   OpwekWijzer — opwek.js  (v1.6.3)
    De consumentenmotor. Bewust ZELFSTANDIG: alleen roof.js (3D-dak),
    viewer.js (het beeld) en accu.js (het omslagpunt) worden bijgeladen.
 
@@ -14,6 +14,8 @@
    foutmeldingen plakken geen punt meer achter een vraagteken.
    v1.6.1: teaser-viewer naar v1.1.0 — de panelen leggen zichzelf, met teller.
    v1.6.2: viewer naar v2.0.0 — schaduwen, PBR en de PDOK-luchtfoto op het echte dak.
+   v1.6.3: viewer naar v2.1.0 — dakpannen en metselwerk op het pand zelf,
+   de (verscherpte) luchtfoto alleen nog op de grond eromheen.
 ================================================================== */
 (function(){
 "use strict";
@@ -191,7 +193,7 @@ $('knopDak').addEventListener('click', async ()=>{
   const pc=pcRuw.slice(0,4)+' '+pcRuw.slice(4);      // PDOK matcht het beste met spatie
   $('wachtDak').classList.add('on');
   try{
-    // 1. adres -> coördinaat (PDOK Locatieserver, officiîl)
+    // 1. adres -> coördinaat (PDOK Locatieserver, officieel)
     const url='https://api.pdok.nl/bzk/locatieserver/search/v3_1/free'
       +'?rows=5&fq=type:adres&fl=centroide_ll,weergavenaam,type&q='+encodeURIComponent(pc+' '+nr);
     const j=await haalJson(url, 9000);
@@ -341,7 +343,7 @@ function reken(){
 ================================================================== */
 function toon3D(){
   if(!D.model || !D.panelen) return;
-  laadScript('/viewer.js?v=2.0.0','Viewer3D').then(()=>{
+  laadScript('/viewer.js?v=2.1.0','Viewer3D').then(()=>{
     if(window.Viewer3D) window.Viewer3D.toon(D.model, D.panelen);
   });
 }
