@@ -1,15 +1,20 @@
 /* ==================================================================
-   OpwekWijzer — hero3d.js  (v1.0.0)
+   OpwekWijzer — hero3d.js  (v2.0.0)
    Het demopand in de hero: een Nederlands rijtjeshuis waarop de panelen
-   zich één voor één leggen, met een meetikkende teller. Geen belofte
-   maar een demonstratie — dit is wat de bezoeker zo van zíjn huis ziet.
+   zich één voor één leggen, met een meetikkende teller.
 
-   Zuinig by design:
+   v2.0.0 — het huis wordt echt:
+   - échte slagschaduwen (huis, schoorsteen en panelen werpen schaduw)
+   - PBR-materialen met procedurele texturen: metselwerk, dakpannen,
+     gras, stoeptegels en paneelcellen — alles uit eigen canvas,
+     geen downloads, geen licenties
+   - kozijnen met diepte, spiegelend glas, dakgoot, nokvorst, tuintje
+   - ACES-tonemapping + omgevingsreflectie voor filmisch licht
+
+   Zuinig by design (ongewijzigd):
    - three.js laadt pas als de browser niets te doen heeft (idle)
    - prefers-reduced-motion of geen WebGL: het stilstaande beeld blijft
-   - het canvas vangt geen aanrakingen (pointer-events:none) — scrollen
-     op mobiel blijft heilig
-   - tekent alleen als de hero in beeld is én het tabblad actief is
+   - canvas vangt geen aanrakingen; tekent alleen in beeld + tab actief
 ================================================================== */
 (function(){
 "use strict";
@@ -36,47 +41,196 @@ else setTimeout(laat, 1400);
 function bouw(){
   const T=window.THREE;
 
+  /* ---- renderer eerst: texturen en reflecties hebben hem nodig ---- */
+  const renderer=new T.WebGLRenderer({antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+  renderer.outputEncoding=T.sRGBEncoding;
+  renderer.toneMapping=T.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.12;
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=T.PCFSoftShadowMap;
+  renderer.domElement.style.cssText='position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+  bak.appendChild(renderer.domElement);
+
+  const scene=new T.Scene();   // transparant: de CSS-lucht schijnt erdoor
+
+  /* ---- de textielkast: elk materiaal komt uit een eigen canvasje ---- */
+  const R=(a,b)=>a+Math.random()*(b-a);
+  function tex(w,h,teken){
+    const c=document.createElement('canvas'); c.width=w; c.height=h;
+    teken(c.getContext('2d'), w, h);
+    const t=new T.CanvasTexture(c);
+    t.wrapS=t.wrapT=T.RepeatWrapping;
+    t.encoding=T.sRGBEncoding;
+    t.anisotropy=renderer.capabilities.getMaxAnisotropy();
+    return t;
+  }
+
+  // metselwerk: rijen bakstenen in halfsteensverband, met voeg
+  function steentjes(){
+    return tex(256,256,g=>{
+      g.fillStyle='#cfc7b8'; g.fillRect(0,0,256,256);
+      for(let r=0;r<8;r++){
+        const y=r*32, off=(r%2)*32;
+        for(let k=-1;k<5;k++){
+          const x=k*64+off;
+          g.fillStyle='hsl('+R(10,19)+','+R(30,44)+'%,'+R(40,52)+'%)';
+          g.fillRect(x+2,y+2,60,28);
+          g.fillStyle='rgba(30,10,0,'+R(0,.1)+')';
+          g.fillRect(x+2,y+2,60,28);
+        }
+      }
+    });
+  }
+  const steenTex=steentjes();  steenTex.repeat.set(2.6,1.9);   // romp (uv 0..1 per zijde)
+  const steenVlakTex=steentjes();                              // topgevels (uv al geschaald)
+
+  // dakpannen: verspringende rijen met welving (licht boven, schaduw onder)
+  const panTex=tex(256,256,g=>{
+    g.fillStyle='#7a5743'; g.fillRect(0,0,256,256);
+    for(let r=0;r<8;r++){
+      const y=r*32, off=(r%2)*16;
+      for(let k=-1;k<9;k++){
+        const x=k*32+off;
+        g.fillStyle='hsl('+R(14,24)+','+R(26,38)+'%,'+R(28,40)+'%)';
+        g.fillRect(x,y,31,31);
+        const gr=g.createLinearGradient(0,y,0,y+32);
+        gr.addColorStop(0,'rgba(255,235,208,.26)');
+        gr.addColorStop(.55,'rgba(0,0,0,0)');
+        gr.addColorStop(1,'rgba(18,4,0,.4)');
+        g.fillStyle=gr; g.fillRect(x,y,31,31);
+      }
+    }
+  });
+
+  const grasTex=tex(128,128,g=>{
+    g.fillStyle='#4c7a4e'; g.fillRect(0,0,128,128);
+    for(let i=0;i<900;i++){
+      g.fillStyle='hsl('+R(95,135)+','+R(24,42)+'%,'+R(20,40)+'%)';
+      g.fillRect(R(0,127),R(0,127),R(1,2.4),R(1,2.4));
+    }
+  });
+  grasTex.repeat.set(7,7);
+
+  const tegelTex=tex(64,64,g=>{
+    g.fillStyle='#b9b6ac'; g.fillRect(0,0,64,64);
+    g.strokeStyle='#8f8d84'; g.lineWidth=2; g.strokeRect(1,1,62,62);
+  });
+  tegelTex.repeat.set(2,5);
+
+  // zonnepaneelcellen: donkerblauw glas met celranden en busbars
+  const celTex=tex(128,128,g=>{
+    g.fillStyle='#0d1a2a'; g.fillRect(0,0,128,128);
+    g.strokeStyle='#25405c'; g.lineWidth=2;
+    for(let i=0;i<=4;i++){
+      g.beginPath(); g.moveTo(i*32,0); g.lineTo(i*32,128); g.stroke();
+      g.beginPath(); g.moveTo(0,i*32); g.lineTo(128,i*32); g.stroke();
+    }
+    g.strokeStyle='#16283d'; g.lineWidth=1;
+    for(let i=0;i<8;i++){ g.beginPath(); g.moveTo(i*16+8,0); g.lineTo(i*16+8,128); g.stroke(); }
+  });
+
+  /* ---- de materialen ---- */
+  const M={
+    steen:  new T.MeshStandardMaterial({map:steenTex, roughness:.92}),
+    gevelV: new T.MeshStandardMaterial({map:steenVlakTex, roughness:.92, side:T.DoubleSide}),
+    pan:    new T.MeshStandardMaterial({map:panTex, bumpMap:panTex, bumpScale:.03, roughness:.8, side:T.DoubleSide}),
+    kozijn: new T.MeshStandardMaterial({color:0xefe9dc, roughness:.6}),
+    glas:   new T.MeshStandardMaterial({color:0x9cb8cc, metalness:.7, roughness:.06, envMapIntensity:1.35}),
+    deur:   new T.MeshStandardMaterial({color:0x2c4534, roughness:.5}),
+    goot:   new T.MeshStandardMaterial({color:0x9aa0a4, metalness:.65, roughness:.3}),
+    nok:    new T.MeshStandardMaterial({color:0x63463a, roughness:.85}),
+    schoor: new T.MeshStandardMaterial({color:0x99604c, roughness:.9}),
+    gras:   new T.MeshStandardMaterial({map:grasTex, roughness:.96}),
+    tegel:  new T.MeshStandardMaterial({map:tegelTex, roughness:.85}),
+    heg:    new T.MeshStandardMaterial({color:0x2f5a38, roughness:.95})
+  };
+  const paneelBasis=new T.MeshStandardMaterial({map:celTex, metalness:.5, roughness:.25,
+    envMapIntensity:1.25, side:T.DoubleSide, transparent:true, opacity:0});
+
+  function metSchaduw(m){ m.castShadow=true; m.receiveShadow=true; return m; }
+
   /* ---- het huis: parametrisch rijtjeshuis met zadeldak ---- */
   const W=7.2, Dp=9.6, GH=5.3, NH=8.7;     // breedte, diepte, goot- en nokhoogte
-  const scene=new T.Scene();               // transparant: de CSS-lucht schijnt erdoor
+  const huis=new T.Group(); scene.add(huis);
 
-  function vlak(pos, kleur){
+  const romp=metSchaduw(new T.Mesh(new T.BoxGeometry(W,GH,Dp), M.steen));
+  romp.position.y=GH/2; huis.add(romp);
+
+  // los vlak met eigen uv's (topgevels en dakvlakken)
+  function vlak(pos, uv, mat){
     const g=new T.BufferGeometry();
     g.setAttribute('position', new T.Float32BufferAttribute(pos,3));
+    g.setAttribute('uv', new T.Float32BufferAttribute(uv,2));
     g.computeVertexNormals();
-    const mesh=new T.Mesh(g, new T.MeshLambertMaterial({color:kleur, side:T.DoubleSide, flatShading:true}));
-    scene.add(mesh); return mesh;
+    return metSchaduw(new T.Mesh(g, mat));
   }
 
-  // romp + topgevels
-  const romp=new T.Mesh(new T.BoxGeometry(W,GH,Dp),
-    new T.MeshLambertMaterial({color:0xd9d2c5, flatShading:true}));
-  romp.position.y=GH/2; scene.add(romp);
-  [Dp/2,-Dp/2].forEach(z=>{ vlak([-W/2,GH,z,  W/2,GH,z,  0,NH,z], 0xd9d2c5); });
+  // topgevels: metselwerk loopt door in maat van de romp
+  [Dp/2,-Dp/2].forEach(z=>{
+    const P=[-W/2,GH,z,  W/2,GH,z,  0,NH,z];
+    const U=[];
+    for(let i=0;i<P.length;i+=3) U.push((P[i]/W+.5)*2.6, P[i+1]/GH*1.9);
+    huis.add(vlak(P,U,M.gevelV));
+  });
 
-  // dakvlakken (nok over de diepte), klein overstek
-  const ov=0.28, zo=Dp/2+0.22, dakY=GH-0.12;
-  vlak([0,NH,-zo,  0,NH,zo,  W/2+ov,dakY,zo,   0,NH,-zo,  W/2+ov,dakY,zo,  W/2+ov,dakY,-zo], 0x8d6a52);
-  vlak([0,NH,-zo,  -(W/2+ov),dakY,zo,  0,NH,zo,   0,NH,-zo,  -(W/2+ov),dakY,-zo,  -(W/2+ov),dakY,zo], 0x8d6a52);
-
-  // schoorsteen op de noordhelling
-  const sch=new T.Mesh(new T.BoxGeometry(0.7,1.3,0.7),
-    new T.MeshLambertMaterial({color:0x7c5a48, flatShading:true}));
-  sch.position.set(-1.2, NH-0.2, -2.6); scene.add(sch);
-
-  // deur en ramen: donkere platen op de voorgevel — bijna gratis karakter
-  function plaat(w,h,x,y,kleur){
-    const p=new T.Mesh(new T.PlaneGeometry(w,h), new T.MeshLambertMaterial({color:kleur}));
-    p.position.set(x,y,Dp/2+0.015); scene.add(p);
+  // dakvlakken met pannen: uv langs diepte en langs de helling, in meters
+  const ov=.28, zo=Dp/2+.22, dakY=GH-.12;
+  const hell=Math.hypot(W/2+ov, NH-dakY);        // schuine lengte van nok tot goot
+  function dakVlak(sx){
+    const x=sx*(W/2+ov);
+    const P=[0,NH,-zo,  0,NH,zo,  x,dakY,zo,   0,NH,-zo,  x,dakY,zo,  x,dakY,-zo];
+    const U=[];
+    for(let i=0;i<P.length;i+=3){
+      U.push((P[i+2]+zo)/1.6, (Math.abs(P[i])/(W/2+ov))*hell/1.6);
+    }
+    huis.add(vlak(P,U,M.pan));
   }
-  plaat(0.95,2.1, -2.2, 1.15, 0x233327);
-  plaat(1.5,1.4,  0.6, 1.65, 0x9fb4c4);  plaat(1.5,1.4, 2.4, 1.65, 0x9fb4c4);
-  plaat(1.5,1.3, -1.4, 4.0,  0x9fb4c4);  plaat(1.5,1.3, 1.2, 4.0,  0x9fb4c4);
+  dakVlak(1); dakVlak(-1);
 
-  // zachte schaduwvlek als grond
-  const grond=new T.Mesh(new T.CircleGeometry(9.5,48),
-    new T.MeshBasicMaterial({color:0x07160e, transparent:true, opacity:0.5}));
-  grond.rotation.x=-Math.PI/2; grond.position.y=0.01; scene.add(grond);
+  // nokvorst en dakgoten
+  const nokv=metSchaduw(new T.Mesh(new T.BoxGeometry(.22,.14,Dp+.5), M.nok));
+  nokv.position.y=NH+.05; huis.add(nokv);
+  [1,-1].forEach(s=>{
+    const g=metSchaduw(new T.Mesh(new T.BoxGeometry(.16,.15,Dp+.5), M.goot));
+    g.position.set(s*(W/2+ov+.03), dakY-.03, 0); huis.add(g);
+  });
+
+  // schoorsteen op de noordhelling, met kraag
+  const sch=metSchaduw(new T.Mesh(new T.BoxGeometry(.7,1.3,.7), M.schoor));
+  sch.position.set(-1.2, NH-.2, -2.6); huis.add(sch);
+  const kraag=metSchaduw(new T.Mesh(new T.BoxGeometry(.84,.1,.84), M.nok));
+  kraag.position.set(-1.2, NH+.42, -2.6); huis.add(kraag);
+
+  // ramen: kozijn met diepte, spiegelend glas, vensterbank
+  function raam(w,h,x,y){
+    const fr=metSchaduw(new T.Mesh(new T.BoxGeometry(w+.16,h+.16,.1), M.kozijn));
+    fr.position.set(x,y,Dp/2+.04); huis.add(fr);
+    const gl=new T.Mesh(new T.PlaneGeometry(w,h), M.glas);
+    gl.position.set(x,y,Dp/2+.095); huis.add(gl);
+    const vb=metSchaduw(new T.Mesh(new T.BoxGeometry(w+.26,.08,.16), M.kozijn));
+    vb.position.set(x,y-h/2-.08,Dp/2+.07); huis.add(vb);
+  }
+  raam(1.5,1.4,  .6,1.65); raam(1.5,1.4, 2.4,1.65);
+  raam(1.5,1.3,-1.4,4.0);  raam(1.5,1.3, 1.2,4.0);
+
+  // voordeur met stoepje
+  const dfr=metSchaduw(new T.Mesh(new T.BoxGeometry(1.1,2.24,.1), M.kozijn));
+  dfr.position.set(-2.2,1.17,Dp/2+.04); huis.add(dfr);
+  const dbl=new T.Mesh(new T.PlaneGeometry(.94,2.08), M.deur);
+  dbl.position.set(-2.2,1.14,Dp/2+.095); dbl.receiveShadow=true; huis.add(dbl);
+  const stoep=metSchaduw(new T.Mesh(new T.BoxGeometry(1.35,.1,.6), M.tegel));
+  stoep.position.set(-2.2,.05,Dp/2+.32); huis.add(stoep);
+
+  /* ---- de tuin: gras vangt de schaduw van het huis ---- */
+  const gras=new T.Mesh(new T.CircleGeometry(12,48), M.gras);
+  gras.rotation.x=-Math.PI/2; gras.receiveShadow=true; scene.add(gras);
+  const pad=new T.Mesh(new T.BoxGeometry(1.4,.05,3.4), M.tegel);
+  pad.position.set(-2.2,.028,Dp/2+2.35); pad.receiveShadow=true; scene.add(pad);
+  const heg1=metSchaduw(new T.Mesh(new T.BoxGeometry(3.4,.8,.7), M.heg));
+  heg1.position.set(1.6,.4,Dp/2+.75); scene.add(heg1);
+  const heg2=metSchaduw(new T.Mesh(new T.BoxGeometry(1.2,.7,.7), M.heg));
+  heg2.position.set(-3.4,.35,Dp/2+.75); scene.add(heg2);
 
   /* ---- de panelen op de zuidhelling: 2 rijen × 7 = 14 ---- */
   const eave=new T.Vector3(W/2, dakY, 0), nok=new T.Vector3(0, NH, 0);
@@ -103,12 +257,17 @@ function bouw(){
     const rel=[p1,p2,p3,p4].map(v=>v.clone().sub(ce));
 
     const g=new T.BufferGeometry();
-    const pos=[];
-    [[0,1,2],[0,2,3]].forEach(t=>t.forEach(i=>pos.push(rel[i].x,rel[i].y,rel[i].z)));
+    const pos=[], uv=[];
+    const uvHoek=[[0,0],[1,0],[1,1],[0,1]];
+    [[0,1,2],[0,2,3]].forEach(t=>t.forEach(i=>{
+      pos.push(rel[i].x,rel[i].y,rel[i].z);
+      uv.push(uvHoek[i][0],uvHoek[i][1]);
+    }));
     g.setAttribute('position', new T.Float32BufferAttribute(pos,3));
+    g.setAttribute('uv', new T.Float32BufferAttribute(uv,2));
     g.computeVertexNormals();
-    const mat=new T.MeshLambertMaterial({color:0x101c2b, emissive:0x0a1420,
-      side:T.DoubleSide, flatShading:true, transparent:true, opacity:0});
+    const mesh=new T.Mesh(g, paneelBasis.clone());
+    mesh.receiveShadow=true;                   // castShadow gaat aan zodra het paneel ligt
 
     const lp=[];
     for(let i=0;i<4;i++){ const a=rel[i], b=rel[(i+1)%4]; lp.push(a.x,a.y,a.z, b.x,b.y,b.z); }
@@ -118,24 +277,44 @@ function bouw(){
 
     const gr=new T.Group();
     gr.position.copy(ce);
-    gr.add(new T.Mesh(g,mat));
+    gr.add(mesh);
     gr.add(new T.LineSegments(lg,lmat));
     gr.userData.nrm=nrm.clone();
     scene.add(gr);
     panelen.push(gr);
   }
 
-  /* ---- licht: warme zon, koele tegenhanger ---- */
-  scene.add(new T.AmbientLight(0xcfe0d2, 0.6));
-  const zon=new T.DirectionalLight(0xffe2a8, 1.1);  zon.position.set(14,20,9);   scene.add(zon);
-  const koel=new T.DirectionalLight(0x8fb0ff, 0.2); koel.position.set(-11,7,-12); scene.add(koel);
+  /* ---- licht: warme zon mét schaduw, koele tegenhanger, zachte hemel ---- */
+  scene.add(new T.AmbientLight(0xbcd2c0, .32));
+  scene.add(new T.HemisphereLight(0xd6ecf6, 0x30503a, .5));
+  const zon=new T.DirectionalLight(0xffe0a6, 1.55);
+  zon.position.set(14,20,9);
+  zon.castShadow=true;
+  zon.shadow.mapSize.set(1024,1024);
+  const sc=zon.shadow.camera;
+  sc.left=-14; sc.right=14; sc.top=16; sc.bottom=-10; sc.near=5; sc.far=55;
+  zon.shadow.bias=-0.0004; zon.shadow.normalBias=.04;
+  scene.add(zon);
+  const koel=new T.DirectionalLight(0x8fb0ff, .18);
+  koel.position.set(-11,7,-12); scene.add(koel);
 
-  /* ---- renderer + camera ---- */
-  const renderer=new T.WebGLRenderer({antialias:true, alpha:true});
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
-  renderer.domElement.style.cssText='position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
-  bak.appendChild(renderer.domElement);
+  // omgevingsreflectie: piepkleine geschilderde lucht -> PBR-glans op glas en panelen
+  (function(){
+    const c=document.createElement('canvas'); c.width=64; c.height=32;
+    const g=c.getContext('2d');
+    const gr=g.createLinearGradient(0,0,0,32);
+    gr.addColorStop(0,'#cfe6f4'); gr.addColorStop(.55,'#e9f2e6');
+    gr.addColorStop(.62,'#4d7350'); gr.addColorStop(1,'#2b4a33');
+    g.fillStyle=gr; g.fillRect(0,0,64,32);
+    g.fillStyle='rgba(255,232,170,.95)';
+    g.beginPath(); g.arc(47,7,4,0,7); g.fill();
+    const t=new T.CanvasTexture(c); t.mapping=T.EquirectangularReflectionMapping;
+    const pm=new T.PMREMGenerator(renderer);
+    scene.environment=pm.fromEquirectangular(t).texture;
+    pm.dispose(); t.dispose();
+  })();
 
+  /* ---- camera ---- */
   const camera=new T.PerspectiveCamera(40, 1, 0.5, 300);
   const mid=new T.Vector3(0, NH*0.46, 0);
   const bol=Math.max(W,Dp,NH)*0.72+2;
@@ -174,7 +353,10 @@ function bouw(){
       panelen.forEach((gr,i)=>{
         const p=Math.max(0, Math.min(1, (t-i*STAP)/DUUR));
         const e=ease(p);
-        gr.children.forEach(ch=>{ ch.material.opacity=p; });
+        gr.children.forEach(ch=>{
+          ch.material.opacity=p;
+          if(ch.isMesh) ch.castShadow = p>0.5;   // schaduw pas als het paneel er ligt
+        });
         gr.scale.setScalar(Math.max(0.001, 0.55+0.45*e));
         // klein 'landings'-liftje langs de daknormaal
         const lift=0.35*(1-e);
@@ -189,7 +371,10 @@ function bouw(){
       if(t>RUST){ fase='weg'; t0=nu; }
     } else { // weg
       const p=Math.max(0, Math.min(1, t/WEG));
-      panelen.forEach(gr=>{ gr.children.forEach(ch=>{ ch.material.opacity=1-p; }); });
+      panelen.forEach(gr=>{ gr.children.forEach(ch=>{
+        ch.material.opacity=1-p;
+        if(ch.isMesh) ch.castShadow = p<0.5;
+      }); });
       if(p>=1){
         panelen.forEach(gr=>{ gr.scale.setScalar(0.001); });
         teller(0);
