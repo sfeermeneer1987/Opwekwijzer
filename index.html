@@ -15,7 +15,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Instrument+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 /* ==================================================================
-   OpwekWijzer — landingspagina (v3.0.0)
+   OpwekWijzer — landingspagina (v3.0.1)
    Conversieprincipes:
    - één doel per pagina, geen navigatie die wegleidt
    - bewijs staat náast de claim die het onderbouwt, niet onderaan
@@ -24,6 +24,8 @@
    - échte urgentie (1-1-2027), nooit verzonnen schaarste of nepreviews
    - beloof niets dat de site niet doet: rapport bekijken + PDF, geen e-mail
    - v4: de hero toont het product zelf — het demopand legt zijn eigen panelen
+   - v4.1: het demopand en het echte pand worden realistisch — schaduwen,
+     metselwerk en dakpannen, en de PDOK-luchtfoto over dak en tuin
 ================================================================== */
 :root{
   --groen:#0d2318; --groen2:#14301f; --groen3:#1d4a2f; --mos:#2f6b45;
@@ -344,7 +346,7 @@ footer a{color:var(--groen3); font-weight:600}
         </svg>
       </div>
       <div class="h3dTeller"><b id="h3dNum">14</b><span>panelen passen op dit dak</span></div>
-      <div class="h3dSub">Zo ziet u het straks van úw huis — met uw echte dak uit de 3D-gebouwenkaart</div>
+      <div class="h3dSub">Zo ziet u het straks van úwww huis — met uw echte dak uit de 3D-gebouwenkaart</div>
     </div>
 
     <button class="knop amber" data-naar-funnel>Bereken mijn dak — gratis
@@ -693,7 +695,7 @@ document.querySelectorAll('[data-naar-funnel]').forEach(function(b){
 </script>
 
 <script src="/roof.js?v=3.8.1"></script>
-<script src="/opwek.js?v=1.6.1"></script>
-<script src="/hero3d.js?v=1.0.0" defer></script>
+<script src="/opwek.js?v=1.6.2"></script>
+<script src="/hero3d.js?v=2.0.0" defer></script>
 </body>
 </html>
