@@ -1,5 +1,5 @@
 /* ==================================================================
-   OpwekWijzer — viewer.js  (v1.0.2)
+   OpwekWijzer — viewer.js  (v1.1.0)
    Het echte pand in 3D, met de panelen die we net hebben gelegd.
 
    Bewust klein gehouden: geen bedieningspaneel, geen instellingen. Dit is
@@ -12,10 +12,10 @@
    Three.js rekent met y omhoog, dus: X = x-cx, Y = z-minz, Z = -(y-cy).
 
    v1.0.1: camera-afstand uit de omhullende bol i.p.v. een vuistregel.
-   v1.0.2: setSize mocht de CSS-maat van het canvas niet aanpassen. Op een
-           telefoon met pixelRatio 2 werd het canvas dan twee keer zo groot als
-           de bak eromheen — je zag één kwart, en het pand stond rechtsonder.
-           Nu vult het canvas de bak, punt.
+   v1.0.2: canvas vult de bak (setSize mocht de CSS-maat niet zetten).
+   v1.1.0: de panelen leggen zich één voor één, met meetellende tekst —
+           dezelfde choreografie als het demopand in de hero. Bij
+           prefers-reduced-motion verschijnt alles direct.
 ================================================================== */
 window.Viewer3D = (function(){
 "use strict";
@@ -49,7 +49,7 @@ function bak(){
     +'overflow:hidden;margin-bottom:12px;background:#0d2318;cursor:grab;'
     +'box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)';
   el.innerHTML='<div id="vw3dNoot" style="position:absolute;left:10px;bottom:8px;z-index:2;'
-    +'font:600 11px/1.3 Inter,sans-serif;color:rgba(255,255,255,.75);'
+    +'font:600 11px/1.3 \'Instrument Sans\',Inter,sans-serif;color:rgba(255,255,255,.75);'
     +'background:rgba(0,0,0,.30);padding:4px 8px;border-radius:7px">'
     +'Uw pand uit de 3D-gebouwenkaart van het Kadaster</div>';
   na.parentNode.insertBefore(el, na);
@@ -77,6 +77,7 @@ async function toon(model, panelen){
   const T=window.THREE;
   const cx=model.cx, cy=model.cy, z0=model.minz;
   const P=p=>[p[0]-cx, p[2]-z0, -(p[1]-cy)];     // RD+NAP -> three
+  const rustig = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   scene=new T.Scene();
   scene.background=new T.Color(0x0d2318);
@@ -99,31 +100,43 @@ async function toon(model, panelen){
   bouw('Wall', 0xd9d2c5);      // gevel
   bouw('Ground', 0x24402c);
 
-  /* ---- de panelen: exact de vlakken die we hebben gelegd ---- */
+  /* ---- de panelen: elk zijn eigen groepje, zodat ze zich kunnen leggen ---- */
   const aan=(panelen||[]).filter(p=>!p.off && p.c3);
-  const vlak=[], lijn=[];
+  const groepen=[];
   aan.forEach(p=>{
     const q=p.c3.map(P);
     // een paar centimeter boven het dak, anders knipperen paneel en pan door
     // elkaar heen (z-fighting)
     const n=p.n ? [p.n[0], p.n[2], -p.n[1]] : [0,1,0];
     const q2=q.map(v=>[v[0]+n[0]*0.06, v[1]+n[1]*0.06, v[2]+n[2]*0.06]);
-    [[0,1,2],[0,2,3]].forEach(t=>t.forEach(i=>vlak.push(q2[i][0],q2[i][1],q2[i][2])));
-    for(let i=0;i<4;i++){
-      const a=q2[i], b=q2[(i+1)%4];
-      lijn.push(a[0],a[1],a[2], b[0],b[1],b[2]);
-    }
-  });
-  if(vlak.length){
+    const ce=[(q2[0][0]+q2[2][0])/2, (q2[0][1]+q2[2][1])/2, (q2[0][2]+q2[2][2])/2];
+    const rel=q2.map(v=>[v[0]-ce[0], v[1]-ce[1], v[2]-ce[2]]);
+
+    const pos=[];
+    [[0,1,2],[0,2,3]].forEach(t=>t.forEach(i=>pos.push(rel[i][0],rel[i][1],rel[i][2])));
     const g=new T.BufferGeometry();
-    g.setAttribute('position', new T.Float32BufferAttribute(vlak,3));
+    g.setAttribute('position', new T.Float32BufferAttribute(pos,3));
     g.computeVertexNormals();
-    scene.add(new T.Mesh(g, new T.MeshLambertMaterial({
-      color:0x101c2b, side:T.DoubleSide, flatShading:true, emissive:0x0a1420})));
+    const mat=new T.MeshLambertMaterial({color:0x101c2b, emissive:0x0a1420,
+      side:T.DoubleSide, flatShading:true, transparent:true, opacity:rustig?1:0});
+
+    const lp=[];
+    for(let i=0;i<4;i++){
+      const a=rel[i], b=rel[(i+1)%4];
+      lp.push(a[0],a[1],a[2], b[0],b[1],b[2]);
+    }
     const lg=new T.BufferGeometry();
-    lg.setAttribute('position', new T.Float32BufferAttribute(lijn,3));
-    scene.add(new T.LineSegments(lg, new T.LineBasicMaterial({color:0xf0a500})));
-  }
+    lg.setAttribute('position', new T.Float32BufferAttribute(lp,3));
+    const lmat=new T.LineBasicMaterial({color:0xf0a500, transparent:true, opacity:rustig?1:0});
+
+    const gr=new T.Group();
+    gr.position.set(ce[0],ce[1],ce[2]);
+    gr.add(new T.Mesh(g,mat));
+    gr.add(new T.LineSegments(lg,lmat));
+    if(!rustig) gr.scale.setScalar(0.001);
+    scene.add(gr);
+    groepen.push(gr);
+  });
 
   /* ---- licht: laagstaande zon geeft het dak reliëf ---- */
   scene.add(new T.AmbientLight(0xbfd8c8, 0.62));
@@ -144,8 +157,8 @@ async function toon(model, panelen){
 
   renderer=new T.WebGLRenderer({antialias:true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
-  // het canvas vult de bak — hier ging het mis: zonder deze regels bepaalt de
-  // pixelRatio de zichtbare maat, en zie je op een telefoon een uitsnede
+  // het canvas vult de bak — zonder deze regels bepaalt de pixelratio de
+  // zichtbare maat, en zie je op een telefoon een uitsnede
   renderer.domElement.style.cssText='display:block;width:100%;height:100%';
   doek.appendChild(renderer.domElement);
 
@@ -189,8 +202,35 @@ async function toon(model, panelen){
   window.addEventListener('mouseup', los);
   doek.addEventListener('touchend', los);
 
-  (function teken(){
+  /* ---- de choreografie: panelen leggen zich, de tekst telt mee ---- */
+  const noot=document.getElementById('vw3dNoot');
+  const eindTekst=aan.length+' panelen op uw echte dak — sleep om te draaien';
+  const startT=performance.now()+400;
+  const stag=Math.max(45, Math.min(200, 1700/Math.max(1,groepen.length)));
+  const DUUR=240;
+  const ease=p=>1-Math.pow(1-p,3);
+  let leggen = !rustig && groepen.length>0;
+  if(!leggen && noot) noot.textContent=eindTekst;
+
+  (function teken(nu){
     stop=requestAnimationFrame(teken);
+    nu=nu||performance.now();
+
+    if(leggen){
+      let af=0, zicht=0;
+      groepen.forEach((gr,i)=>{
+        const p=Math.max(0, Math.min(1, (nu-startT-i*stag)/DUUR));
+        gr.children.forEach(ch=>{ ch.material.opacity=p; });
+        gr.scale.setScalar(Math.max(0.001, 0.55+0.45*ease(p)));
+        if(p>=1) af++;
+        if(p>=0.5) zicht++;
+      });
+      if(noot) noot.textContent = af<groepen.length
+        ? (zicht+' van '+groepen.length+' panelen gelegd…')
+        : eindTekst;
+      if(af>=groepen.length) leggen=false;
+    }
+
     if(draai) hoek += 0.0022;
     const straal=Math.cos(ooghoek)*afstand;
     camera.position.set(
@@ -201,9 +241,6 @@ async function toon(model, panelen){
     camera.lookAt(mid);
     renderer.render(scene, camera);
   })();
-
-  const noot=document.getElementById('vw3dNoot');
-  if(noot) noot.textContent = aan.length+' panelen op uw echte dak — sleep om te draaien';
 }
 
 return {toon, uit:schoon};
