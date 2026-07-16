@@ -15,7 +15,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Instrument+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 /* ==================================================================
-   OpwekWijzer — landingspagina (v3.1.3)
+   OpwekWijzer — landingspagina (v3.1.4)
    Conversieprincipes:
    - één doel per pagina, geen navigatie die wegleidt
    - bewijs staat náast de claim die het onderbouwt, niet onderaan
@@ -46,6 +46,8 @@
    - v5.0: rapport-download werkt nu ook op iPhone/Android — opent in een
      nieuw tabblad met knop "Bewaar als PDF / print"; oude niet-werkende
      PDF-knop verborgen
+   - v5.1: highlight-rij in tabellen (accu-vergelijking + rapport) rendert weer
+     als nette tabelrij i.p.v. losse blokjes — algemene .top(flex) botste met tr.top
 ================================================================== */
 :root{
   --groen:#0d2318; --groen2:#14301f; --groen3:#1d4a2f; --mos:#2f6b45;
@@ -213,6 +215,9 @@ h2.vraag{font:700 20px/1.28 Archivo,sans-serif; color:var(--groen2); letter-spac
   overflow:hidden; border:1px solid var(--lijn); box-shadow:var(--sch-s)}
 .rtab th{background:#f4f1e8; font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--grijs);
   text-align:left; padding:9px 11px}
+/* de algemene .top-klasse is display:flex; binnen een tabel moet 'top' gewoon
+   een tabelrij blijven, anders klappen de cellen tot losse blokjes samen */
+.rtab tr.top{display:table-row; padding:0; gap:0}
 .rtab td{padding:10px 11px; border-top:1px solid #f2efe6; vertical-align:top; font-variant-numeric:tabular-nums}
 .rtab td:first-child{color:var(--grijs)}
 .rtab td:last-child{font-weight:600}
