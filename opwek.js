@@ -1,5 +1,5 @@
 /* ==================================================================
-   OpwekWijzer — opwek.js  (v1.6.3)
+   OpwekWijzer — opwek.js  (v1.7.0)
    De consumentenmotor. Bewust ZELFSTANDIG: alleen roof.js (3D-dak),
    viewer.js (het beeld) en accu.js (het omslagpunt) worden bijgeladen.
 
@@ -16,6 +16,10 @@
    v1.6.2: viewer naar v2.0.0 — schaduwen, PBR en de PDOK-luchtfoto op het echte dak.
    v1.6.3: viewer naar v2.1.0 — dakpannen en metselwerk op het pand zelf,
    de (verscherpte) luchtfoto alleen nog op de grond eromheen.
+   v1.7.0: leadgeneratie verscherpt — zelfverbruik nu weg/deels/veel,
+   contract + fase ook in de panelenroute (niet meer hardcoded), optioneel
+   exact verbruik, warmtepomp/EV-vraag, en ná het rapport de kwalificatie-
+   vragen koop/huur, termijn, budget en motivatie in de lead-payload.
 ================================================================== */
 (function(){
 "use strict";
@@ -29,7 +33,7 @@ const CYCLI=280, DEG=0.0045, JAREN=25;
 const TERUGKOST=0.11;             // €/kWh terugleverkosten, marktpeil (teaser; rapport is instelbaar)
 
 // zelfverbruik zonder accu: aandeel van de opwek dat direct zelf gebruikt wordt
-const BASIS_ZELF={weg:0.34, thuis:0.45};
+const BASIS_ZELF={weg:0.34, deels:0.40, veel:0.48};
 
 // de twee A-systemen, met de specs die ertoe doen
 const SYSTEEM={
@@ -115,6 +119,16 @@ const pakOpwek    = tikgroep('tkOpwek');
 const pakVerbruik2= tikgroep('tkVerbruik2');
 const pakContract = tikgroep('tkContract');
 const pakFase     = tikgroep('tkFase');
+// v1.7.0 — funnel-brede rapportvragen + kwalificatievragen ná het rapport
+const pakContractA= tikgroep('tkContractA');   // contract in de panelen/adres-route
+const pakFaseA    = tikgroep('tkFaseA');        // fase in de panelen/adres-route
+const pakWpev     = tikgroep('tkWpev');         // warmtepomp/EV (panelen-route)
+const pakProfiel2 = tikgroep('tkProfiel2');     // zelfverbruik in de accu-route
+const pakWpev2    = tikgroep('tkWpev2');         // warmtepomp/EV (accu-route)
+const pakKoop     = tikgroep('tkKoop');          // koop/huur (kwalificatie)
+const pakTermijn  = tikgroep('tkTermijn');       // termijn (kwalificatie)
+const pakBudget   = tikgroep('tkBudget');        // budget/financiering (kwalificatie)
+const pakMotivatie= tikgroep('tkMotivatie');     // motivatie (kwalificatie)
 
 enter(['pc','nr'],'knopDak');
 enter(['ldNaam','ldMail'],'knopLead');
@@ -247,10 +261,14 @@ $('knopDak').addEventListener('click', async ()=>{
     D.dossier.kwp=actief.length*PANEEL_WP/1000;
     D.dossier.opwek=Math.round(opwek);
     D.dossier.vlakken=per;
-    D.dossier.verbruik=parseInt(pakVerbruik(),10);
+    const exact=parseInt((($('verbruikExact')&&$('verbruikExact').value)||'').replace(/\D/g,''),10);
+    const heeftExact=exact>=500 && exact<=30000;
+    D.dossier.verbruik=heeftExact?exact:parseInt(pakVerbruik(),10);
+    D.dossier.verbruikExact=heeftExact?exact:null;
     D.dossier.profiel=pakProfiel();
-    D.dossier.contract='vast';
-    D.dossier.fase='1';
+    D.dossier.contract=pakContractA();
+    D.dossier.fase=pakFaseA();
+    D.dossier.wpev=pakWpev();
     D.dossier.panels=actief.map(p=>p.ll);      // hoekpunten voor het legplan
 
     reken();
@@ -271,9 +289,10 @@ $('knopAccu').addEventListener('click', ()=>{
   D.dossier.aantal=Math.round(D.dossier.opwek/ (PANEEL_WP*0.9));   // indicatie
   D.dossier.kwp=Math.round(D.dossier.opwek/900*10)/10;
   D.dossier.verbruik=parseInt(pakVerbruik2(),10);
-  D.dossier.profiel='weg';
+  D.dossier.profiel=pakProfiel2();
   D.dossier.contract=pakContract();
   D.dossier.fase=pakFase();
+  D.dossier.wpev=pakWpev2();
   reken();
   teaser();
 });
@@ -433,7 +452,9 @@ function leadBasis(){
     route:D.route,
     postcode:d.postcode||null, huisnummer:d.huisnummer||null, adres:d.adres||null,
     pand_id:d.pand_id||null,
-    verbruik:d.verbruik, contract:d.contract, fase:d.fase,
+    verbruik:d.verbruik, verbruik_exact:d.verbruikExact||null,
+    zelfverbruik:d.profiel||null, wp_ev:d.wpev||null,
+    contract:d.contract, fase:d.fase,
     aantal_panelen:d.aantal||null, kwp:d.kwp||null, opwek:d.opwek||null,
     besparing:d.besparing0||null,
     tvt:d.tvtPanelen||null,
@@ -498,6 +519,7 @@ function belStap(){
         body:JSON.stringify(Object.assign(leadBasis(), {
           lead_id:D.leadId, naam:D.naam, email:D.mail,
           telefoon:tel, belvoorkeur:(keuze&&keuze.dataset.v)||'geen voorkeur', stap:'B',
+          woning:pakKoop(), termijn:pakTermijn(), budget:pakBudget(), motivatie:pakMotivatie(),
           consent:true, consent_tekst:$('avgTekst').textContent.trim()
         }))});
       if(!r.ok) throw new Error('mislukt');
@@ -548,6 +570,7 @@ function rapport(){
       +'<h3>Wat de panelen opleveren (situatie ná 2027)</h3>'
       +'<table class="rtab">'
       +'<tr><td>U gebruikt zelf direct</td><td>'+nl(d.zelf0)+' kWh ('+nl(d.zelf0/Math.max(1,d.opwek)*100)+'%)</td></tr>'
+      +'<tr><td>Energiecontract</td><td>'+(dyn?'dynamisch (uurprijzen)':'vast tarief')+'</td></tr>'
       +'<tr class="top"><td>Besparing per jaar</td><td>'+euro(d.besparing0)+'</td></tr>'
       +'<tr><td>Indicatieve investering</td><td>'+euro(d.invPanelen)+' (marktpeil, incl. 0% btw)</td></tr>'
       +'<tr><td>Terugverdiend in</td><td>'+(d.tvtPanelen?nl(d.tvtPanelen,1)+' jaar':'> 25 jaar')+'</td></tr>'
@@ -560,6 +583,14 @@ function rapport(){
       +'<tr><td>U gebruikt zelf direct</td><td>'+nl(d.zelf0)+' kWh</td></tr>'
       +'<tr><td>Contract</td><td>'+(dyn?'dynamisch (uurprijzen)':'vast tarief')+'</td></tr>'
       +'</table>';
+  }
+
+  // Warmtepomp/EV: meer eigen verbruik -> panelen en accu worden juist gunstiger
+  if(d.wpev==='gepland' || d.wpev==='heb'){
+    h+='<div class="adviesblok"><b>'+(d.wpev==='heb'?'U heeft een warmtepomp of EV':'U bent een warmtepomp of EV van plan')+'</b>'
+      +'Daarmee gebruikt u een groter deel van uw stroom zelf. Dat maakt zowel panelen als een '
+      +'thuisbatterij gunstiger dan deze indicatie laat zien — de installateur rekent uw exacte '
+      +'situatie (en het extra verbruik) mee in het voorstel.</div>';
   }
 
   // Het hart van het rapport: accu.js rekent drie maten door, met terugleverkosten.
