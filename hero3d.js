@@ -1,5 +1,5 @@
 /* ==================================================================
-   OpwekWijzer — hero3d.js  (v2.4.0)
+   OpwekWijzer — hero3d.js  (v2.5.0)
    Het demopand in de hero: een Nederlands rijtjeshuis waarop de panelen
    zich één voor één leggen, met een meetikkende teller.
 
@@ -20,6 +20,12 @@
      onderste paneelrij volledig zichtbaar is (niet meer die smalle rand).
    - de stroomkabel loopt nu recht langs de gevel omlaag naar de accu,
      geen diagonaal meer over het dak.
+   v2.5.0 — nog duidelijker:
+   - camera kijkt nu echt van bovenaf op het dak, zodat beide paneelrijen
+     volledig in beeld staan.
+   - de thuisbatterij is fors groter en duidelijker.
+   - de stroomkabel is nu een zwarte, dikkere buis waar de neon-stroom
+     zichtbaar overheen loopt.
 
    Zuinig by design (ongewijzigd):
    - three.js laadt pas als de browser niets te doen heeft (idle)
@@ -308,26 +314,26 @@ function bouw(){
     accu.add(m);
     return m;
   }
-  // de toren zelf
-  accuDeel(new T.BoxGeometry(.62,1.5,.44),
-    new T.MeshStandardMaterial({color:0x14181d, metalness:.6, roughness:.28, envMapIntensity:1.2}), 0,.75,0);
+  // de toren zelf — fors groter en duidelijker
+  accuDeel(new T.BoxGeometry(.86,2.05,.6),
+    new T.MeshStandardMaterial({color:0x14181d, metalness:.6, roughness:.28, envMapIntensity:1.2}), 0,1.02,0);
   // spiegelend frontpaneel
-  accuDeel(new T.BoxGeometry(.5,1.34,.02),
-    new T.MeshStandardMaterial({color:0x1d242c, metalness:.85, roughness:.12, envMapIntensity:1.6}), 0,.78,.225);
+  accuDeel(new T.BoxGeometry(.7,1.84,.03),
+    new T.MeshStandardMaterial({color:0x1d242c, metalness:.85, roughness:.12, envMapIntensity:1.6}), 0,1.05,.31);
   // kap en voet, mat zwart
-  accuDeel(new T.BoxGeometry(.68,.05,.5),
-    new T.MeshStandardMaterial({color:0x0c0f13, metalness:.5, roughness:.35}), 0,1.525,0);
-  accuDeel(new T.BoxGeometry(.7,.07,.52),
-    new T.MeshStandardMaterial({color:0x0c0f13, metalness:.4, roughness:.5}), 0,.035,0);
-  // dunne randstrook links op het front — ademt straks zachtjes
-  const accuLed=accuDeel(new T.BoxGeometry(.05,1.3,.015),
-    new T.MeshStandardMaterial({color:0x241800, emissive:0xf0a500, emissiveIntensity:0, roughness:.4}), -.2,.78,.235);
+  accuDeel(new T.BoxGeometry(.94,.07,.68),
+    new T.MeshStandardMaterial({color:0x0c0f13, metalness:.5, roughness:.35}), 0,2.08,0);
+  accuDeel(new T.BoxGeometry(.96,.09,.7),
+    new T.MeshStandardMaterial({color:0x0c0f13, metalness:.4, roughness:.5}), 0,.045,0);
+  // randstrook links op het front — ademt straks zachtjes
+  const accuLed=accuDeel(new T.BoxGeometry(.07,1.78,.02),
+    new T.MeshStandardMaterial({color:0x241800, emissive:0xf0a500, emissiveIntensity:0, roughness:.4}), -.27,1.05,.325);
   // lichtring aan de voet: het 'zweef'-effect
   const ringMat=new T.MeshStandardMaterial({color:0x231700, emissive:0xf0a500, emissiveIntensity:0,
     roughness:.6, transparent:true, opacity:0});
   accuMats.push(ringMat);
-  const accuRing=new T.Mesh(new T.TorusGeometry(.52,.022,10,48), ringMat);
-  accuRing.rotation.x=-Math.PI/2; accuRing.position.y=.03;
+  const accuRing=new T.Mesh(new T.TorusGeometry(.72,.03,10,48), ringMat);
+  accuRing.rotation.x=-Math.PI/2; accuRing.position.y=.04;
   accu.add(accuRing);
 
   // fel oplichtend batterijteken op het front — neon, additief, dus het gloeit
@@ -343,13 +349,13 @@ function bouw(){
   });
   const iconMat=new T.MeshBasicMaterial({map:iconTex, transparent:true, opacity:0,
     blending:T.AdditiveBlending, depthWrite:false, side:T.DoubleSide});
-  const icon=new T.Mesh(new T.PlaneGeometry(.34,.46), iconMat);
-  icon.position.set(.06,.96,.246);
+  const icon=new T.Mesh(new T.PlaneGeometry(.48,.64), iconMat);
+  icon.position.set(.08,1.3,.33);
   accu.add(icon);
 
   // en een warme gloed die op de gevel valt
-  const accuGloed=new T.PointLight(0xf0a500, 0, 4.5, 2);
-  accuGloed.position.set(0,.9,.4);
+  const accuGloed=new T.PointLight(0xf0a500, 0, 5.5, 2);
+  accuGloed.position.set(0,1.2,.5);
   accu.add(accuGloed);
   accu.position.set(-3.6, 0, Dp/2+1.0);
   accu.scale.set(1,0.001,1);                 // rijst straks uit de grond
@@ -364,31 +370,35 @@ function bouw(){
     +'box-shadow:0 4px 12px rgba(240,165,0,.35)';
   bak.appendChild(badge);
 
-  /* ---- de fluoriserende stroomlijn: van de panelen naar de accu ----
-     Van de onderrand van het paneelveld langs de goot naar links, dan
-     recht langs de gevel omlaag naar de accu. Een neon-texture stroomt er
-     richting de accu overheen, additief zodat hij oplicht. */
+  /* ---- de stroomkabel: van de panelen naar de accu ----
+     Een zwarte, dikke buis van de onderrand van het paneelveld, langs de
+     goot en recht langs de gevel omlaag naar de kop van de batterij. Een
+     felle neon-puls stroomt er zichtbaar overheen richting de accu. */
   const stroomPad=new T.CatmullRomCurve3([
     new T.Vector3( 2.9, 5.55, 1.9),  // onderrand paneelveld
     new T.Vector3( 0.2, 5.05, 4.86), // langs de goot naar links, tot boven de accu
     new T.Vector3(-3.42, 3.7, 4.9),  // hier de bocht naar beneden
-    new T.Vector3(-3.45, 2.0, 4.94), // recht langs de gevel omlaag
-    new T.Vector3(-3.5, 1.35, 5.75)  // naar de kop van de accu
+    new T.Vector3(-3.45, 2.4, 4.94), // recht langs de gevel omlaag
+    new T.Vector3(-3.5, 1.7, 5.8)    // naar de kop van de (grotere) accu
   ], false, 'catmullrom', 0.15);
+  // zwarte kabel: donkere ondergrond met felle neon-pulsen die erover stromen
   const stroomTex=tex(64,8,g=>{
-    g.fillStyle='#02140c'; g.fillRect(0,0,64,8);
-    for(let i=0;i<4;i++){
-      const x=i*16, gr=g.createLinearGradient(x,0,x+16,0);
-      gr.addColorStop(0,'rgba(60,255,170,0)');
-      gr.addColorStop(.5,'rgba(150,255,200,1)');
-      gr.addColorStop(1,'rgba(60,255,170,0)');
-      g.fillStyle=gr; g.fillRect(x,0,16,8);
+    g.fillStyle='#050807'; g.fillRect(0,0,64,8);        // de zwarte kabel zelf
+    for(let i=0;i<3;i++){
+      const x=i*22, gr=g.createLinearGradient(x,0,x+22,0);
+      gr.addColorStop(0,'#050807');
+      gr.addColorStop(.5,'#7dffb4');                     // felle stroom-puls
+      gr.addColorStop(1,'#050807');
+      g.fillStyle=gr; g.fillRect(x,0,22,8);
     }
   });
-  stroomTex.repeat.set(11,1);
-  const stroomMat=new T.MeshBasicMaterial({map:stroomTex, color:0x9dffcc,
-    transparent:true, opacity:0, blending:T.AdditiveBlending, depthWrite:false, side:T.DoubleSide});
-  const stroom=new T.Mesh(new T.TubeGeometry(stroomPad,96,0.05,8,false), stroomMat);
+  stroomTex.repeat.set(9,1);
+  // MeshStandard met emissiveMap: zwart materiaal, alleen de pulsen lichten op
+  const stroomMat=new T.MeshStandardMaterial({map:stroomTex, emissiveMap:stroomTex,
+    emissive:0x9dffcc, emissiveIntensity:1.2, color:0x000000, roughness:.5, metalness:.2,
+    transparent:true, opacity:0});
+  const stroom=new T.Mesh(new T.TubeGeometry(stroomPad,110,0.085,10,false), stroomMat);
+  stroom.castShadow=true;
   scene.add(stroom);
 
   /* ---- licht: warme zon met schaduw, koele tegenhanger, zachte hemel ---- */
@@ -423,7 +433,7 @@ function bouw(){
 
   /* ---- camera ---- */
   const camera=new T.PerspectiveCamera(40, 1, 0.5, 300);
-  const mid=new T.Vector3(0, NH*0.46, 0);
+  const mid=new T.Vector3(0, NH*0.52, 0);
   const bol=Math.max(W,Dp,NH)*0.72+2;
   let afstand=bol*2.6;
   function zet(){
@@ -439,7 +449,7 @@ function bouw(){
   zet(); addEventListener('resize', zet);
 
   /* ---- de choreografie: leggen -> accu -> blijvende rust met stroom ---- */
-  const STAP=380, DUUR=300, ACCU_D=800, oog=30*Math.PI/180;
+  const STAP=380, DUUR=300, ACCU_D=800, oog=40*Math.PI/180;
   const ease=p=>1-Math.pow(1-p,3);
   let fase='leg', t0=performance.now()+700, hoek=0.72;
   let zichtbaar=true, actief=true, getoond=false;
@@ -493,7 +503,7 @@ function bouw(){
       ringMat.emissiveIntensity=.9+.8*adem;
       accuGloed.intensity=.75+.55*adem;
       iconMat.opacity=.8+.2*adem;            // het batterijteken pulseert zacht
-      if(stroomMat.opacity<0.95) stroomMat.opacity+=0.02;   // stroomlijn licht op
+      if(stroomMat.opacity<1) stroomMat.opacity=Math.min(1, stroomMat.opacity+0.03); // kabel verschijnt
       stroomTex.offset.x-=0.018;             // neonpulsen stromen naar de accu
     }
 
