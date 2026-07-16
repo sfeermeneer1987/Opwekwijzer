@@ -1,5 +1,5 @@
 /* ==================================================================
-   OpwekWijzer — hero3d.js  (v2.6.1)
+   OpwekWijzer — hero3d.js  (v2.7.0)
    Het demopand in de hero: een Nederlands rijtjeshuis waarop de panelen
    zich één voor één leggen, met een meetikkende teller.
 
@@ -32,6 +32,11 @@
      loopt; daardoor zakte de onderste rij ónder het dakoppervlak en verdween
      zodra hij 'landde'. Eave-referentie nu op de overstekrand -> paneelvlak
      exact parallel aan het dak, elke rij zichtbaar 9 cm erboven.
+   v2.7.0 — thuisbatterij als wandmodel:
+   - de vrijstaande toren is vervangen door een plat wandmodel tegen de
+     gevel (donker geborsteld front, blauwe lichtstrip, kabels onderuit),
+     naar voorbeeld van een echte wandbatterij.
+   - de stroomkabel loopt recht langs de gevel omlaag de bovenkant in.
 
    Zuinig by design (ongewijzigd):
    - three.js laadt pas als de browser niets te doen heeft (idle)
@@ -319,7 +324,7 @@ function bouw(){
     panelen.push(gr);
   }
 
-  /* ---- de thuisbatterij: een vrijstaande toren naast het tuinpad ---- */
+  /* ---- de thuisbatterij: een plat wandmodel tegen de gevel ---- */
   const accu=new T.Group();
   const accuMats=[];
   function accuDeel(geo, mat, x, y, z){
@@ -330,51 +335,43 @@ function bouw(){
     accu.add(m);
     return m;
   }
-  // de toren zelf — fors groter en duidelijker
-  accuDeel(new T.BoxGeometry(.86,2.05,.6),
-    new T.MeshStandardMaterial({color:0x14181d, metalness:.6, roughness:.28, envMapIntensity:1.2}), 0,1.02,0);
-  // spiegelend frontpaneel
-  accuDeel(new T.BoxGeometry(.7,1.84,.03),
-    new T.MeshStandardMaterial({color:0x1d242c, metalness:.85, roughness:.12, envMapIntensity:1.6}), 0,1.05,.31);
-  // kap en voet, mat zwart
-  accuDeel(new T.BoxGeometry(.94,.07,.68),
-    new T.MeshStandardMaterial({color:0x0c0f13, metalness:.5, roughness:.35}), 0,2.08,0);
-  accuDeel(new T.BoxGeometry(.96,.09,.7),
-    new T.MeshStandardMaterial({color:0x0c0f13, metalness:.4, roughness:.5}), 0,.045,0);
-  // randstrook links op het front — ademt straks zachtjes
-  const accuLed=accuDeel(new T.BoxGeometry(.07,1.78,.02),
-    new T.MeshStandardMaterial({color:0x241800, emissive:0xf0a500, emissiveIntensity:0, roughness:.4}), -.27,1.05,.325);
-  // lichtring aan de voet: het 'zweef'-effect
-  const ringMat=new T.MeshStandardMaterial({color:0x231700, emissive:0xf0a500, emissiveIntensity:0,
-    roughness:.6, transparent:true, opacity:0});
-  accuMats.push(ringMat);
-  const accuRing=new T.Mesh(new T.TorusGeometry(.72,.03,10,48), ringMat);
-  accuRing.rotation.x=-Math.PI/2; accuRing.position.y=.04;
-  accu.add(accuRing);
+  // achterplaat tegen de muur
+  accuDeel(new T.BoxGeometry(.98,1.56,.05),
+    new T.MeshStandardMaterial({color:0x0c0f13, metalness:.4, roughness:.6}), 0,0,-.075);
+  // hoofdbehuizing
+  accuDeel(new T.BoxGeometry(.94,1.5,.17),
+    new T.MeshStandardMaterial({color:0x1a1e24, metalness:.62, roughness:.32, envMapIntensity:1.2}), 0,0,.012);
+  // geborsteld/spiegelend front
+  accuDeel(new T.BoxGeometry(.84,1.4,.02),
+    new T.MeshStandardMaterial({color:0x2b323c, metalness:.86, roughness:.13, envMapIntensity:1.7}), 0,.02,.1);
+  // donkere bovenrand
+  accuDeel(new T.BoxGeometry(.94,.07,.19),
+    new T.MeshStandardMaterial({color:0x11151a, metalness:.5, roughness:.4}), 0,.75,.01);
+  // blauwe lichtstrip vlak onder de bovenrand — het kenmerk uit de foto
+  const accuLed=accuDeel(new T.BoxGeometry(.66,.035,.03),
+    new T.MeshStandardMaterial({color:0x0a1a22, emissive:0x35d0ff, emissiveIntensity:0, roughness:.35}), .02,.6,.11);
+  accuLed.rotation.z=-.05;   // lichte schuinte zoals in de foto
 
-  // fel oplichtend batterijteken op het front — neon, additief, dus het gloeit
-  const iconTex=tex(140,180,g=>{
-    g.fillStyle='#000'; g.fillRect(0,0,140,180);
-    g.strokeStyle='#9dffd0'; g.lineWidth=11; g.lineJoin='round';
-    g.fillStyle='#9dffd0';
-    g.fillRect(52,10,36,16);              // pluspool bovenop
-    g.strokeRect(30,32,80,138);           // batterij-omtrek
-    g.fillRect(44,120,52,34);             // drie oplaadbalken
-    g.fillRect(44,80,52,34);
-    g.fillRect(44,40,52,34);
+  // twee zwarte kabels onderuit de behuizing (zoals in de foto)
+  const kabelMat=new T.MeshStandardMaterial({color:0x0a0c0e, roughness:.7, metalness:.15,
+    transparent:true, opacity:0});
+  accuMats.push(kabelMat);
+  [-.16,.16].forEach(cx=>{
+    const pad=new T.CatmullRomCurve3([
+      new T.Vector3(cx,-.72,.03),
+      new T.Vector3(cx*.8,-1.05,-.01),
+      new T.Vector3(cx*.5,-1.42,-.06)
+    ], false, 'catmullrom', .3);
+    const kb=new T.Mesh(new T.TubeGeometry(pad,20,.028,8,false), kabelMat);
+    kb.castShadow=true; accu.add(kb);
   });
-  const iconMat=new T.MeshBasicMaterial({map:iconTex, transparent:true, opacity:0,
-    blending:T.AdditiveBlending, depthWrite:false, side:T.DoubleSide});
-  const icon=new T.Mesh(new T.PlaneGeometry(.48,.64), iconMat);
-  icon.position.set(.08,1.3,.33);
-  accu.add(icon);
 
-  // en een warme gloed die op de gevel valt
-  const accuGloed=new T.PointLight(0xf0a500, 0, 5.5, 2);
-  accuGloed.position.set(0,1.2,.5);
+  // koele blauwe gloed die op de gevel en de behuizing valt
+  const accuGloed=new T.PointLight(0x4ad2ff, 0, 3.4, 2);
+  accuGloed.position.set(0,.62,.55);
   accu.add(accuGloed);
-  accu.position.set(-3.6, 0, Dp/2+1.0);
-  accu.scale.set(1,0.001,1);                 // rijst straks uit de grond
+  accu.position.set(-3.0, 2.45, Dp/2+0.1);   // plat tegen de voorgevel, links van de deur
+  accu.scale.setScalar(0.82);                // popt straks naar 1 in beeld
   scene.add(accu);
 
   // het label "+ thuisbatterij"
@@ -393,9 +390,9 @@ function bouw(){
   const stroomPad=new T.CatmullRomCurve3([
     new T.Vector3( 2.9, 5.55, 1.9),  // onderrand paneelveld
     new T.Vector3( 0.2, 5.05, 4.86), // langs de goot naar links, tot boven de accu
-    new T.Vector3(-3.42, 3.7, 4.9),  // hier de bocht naar beneden
-    new T.Vector3(-3.45, 2.4, 4.94), // recht langs de gevel omlaag
-    new T.Vector3(-3.5, 1.7, 5.8)    // naar de kop van de (grotere) accu
+    new T.Vector3(-3.0, 4.25, 4.9),  // langs de gevel omlaag tot boven de accu
+    new T.Vector3(-3.0, 3.6, 4.93),  // recht omlaag
+    new T.Vector3(-3.0, 3.2, 4.97)   // in de bovenkant van de wandbatterij
   ], false, 'catmullrom', 0.15);
   // zwarte kabel: donkere ondergrond met felle neon-pulsen die erover stromen
   const stroomTex=tex(64,8,g=>{
@@ -502,23 +499,19 @@ function bouw(){
       // eenmaal gelegd blijven de panelen liggen — geen weg-fase meer
       if(klaarN>=panelen.length){ fase='accu'; t0=nu; }
     } else if(fase==='accu'){
-      // het slotakkoord: de batterijtoren rijst uit de grond
+      // het slotakkoord: de wandbatterij verschijnt en licht op
       const p=Math.max(0, Math.min(1, t/ACCU_D));
       const e=ease(p);
-      accu.scale.y=Math.max(0.001, e);
+      accu.scale.setScalar(0.82+0.18*e);
       accuMats.forEach(m=>{ m.opacity=p; });
-      accuLed.material.emissiveIntensity=2.2*e;
-      ringMat.emissiveIntensity=1.5*e;
-      accuGloed.intensity=1.1*e;
-      iconMat.opacity=p;
+      accuLed.material.emissiveIntensity=2.8*e;
+      accuGloed.intensity=1.3*e;
       badge.style.opacity=String(p);
       if(p>=1){ fase='rust'; t0=nu; }
-    } else { // rust — blijvend: alles blijft staan, licht ademt, stroom loopt
-      const adem=.5+.5*Math.sin(nu/420);
-      accuLed.material.emissiveIntensity=1.4+1.1*adem;
-      ringMat.emissiveIntensity=.9+.8*adem;
-      accuGloed.intensity=.75+.55*adem;
-      iconMat.opacity=.8+.2*adem;            // het batterijteken pulseert zacht
+    } else { // rust — blijvend: alles blijft staan, de lichtstrip ademt zacht
+      const adem=.5+.5*Math.sin(nu/560);
+      accuLed.material.emissiveIntensity=2.0+.9*adem;
+      accuGloed.intensity=.85+.5*adem;
       if(stroomMat.opacity<1) stroomMat.opacity=Math.min(1, stroomMat.opacity+0.03); // kabel verschijnt
       stroomTex.offset.x-=0.018;             // neonpulsen stromen naar de accu
     }
