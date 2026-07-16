@@ -1,5 +1,5 @@
 /* ==================================================================
-   OpwekWijzer — hero3d.js  (v2.3.0)
+   OpwekWijzer — hero3d.js  (v2.4.0)
    Het demopand in de hero: een Nederlands rijtjeshuis waarop de panelen
    zich één voor één leggen, met een meetikkende teller.
 
@@ -14,6 +14,12 @@
    - een fluoriserende stroomlijn loopt van de panelen naar de accu, met
      neonpulsen die naar de batterij toe stromen.
    - een fel oplichtend batterijteken op de accu, dat zachtjes meeademt.
+   v2.4.0 — op verzoek stilgezet en rechtgetrokken:
+   - de camera staat nu stil op de foto-hoek; het huis draait niet meer.
+   - iets meer van bovenaf en de rijen verder uit elkaar, zodat de
+     onderste paneelrij volledig zichtbaar is (niet meer die smalle rand).
+   - de stroomkabel loopt nu recht langs de gevel omlaag naar de accu,
+     geen diagonaal meer over het dak.
 
    Zuinig by design (ongewijzigd):
    - three.js laadt pas als de browser niets te doen heeft (idle)
@@ -244,7 +250,7 @@ function bouw(){
   const nrm=new T.Vector3().crossVectors(uHelling,uDiep).normalize();
   // RAND groter dan voorheen (was 0,40): de onderste rij komt zo hoger op de
   // helling te liggen, vrij van de goot en dus volledig in beeld.
-  const PW=1.13, PH=1.72, GAP=0.05, RAND=1.05, RIJEN=2, KOL=7;
+  const PW=1.13, PH=1.72, GAP=0.14, RAND=1.05, RIJEN=2, KOL=7;
 
   const start=new T.Vector3().copy(eave)
     .addScaledVector(uHelling, RAND)
@@ -359,16 +365,16 @@ function bouw(){
   bak.appendChild(badge);
 
   /* ---- de fluoriserende stroomlijn: van de panelen naar de accu ----
-     Een gebogen buis van de onderrand van het paneelveld, over de gevel,
-     naar de kop van de batterij. Een neon-texture stroomt er richting de
-     accu overheen, additief zodat hij oplicht als een lichtstroom. */
+     Van de onderrand van het paneelveld langs de goot naar links, dan
+     recht langs de gevel omlaag naar de accu. Een neon-texture stroomt er
+     richting de accu overheen, additief zodat hij oplicht. */
   const stroomPad=new T.CatmullRomCurve3([
-    new T.Vector3( 2.9, 5.9, 2.6),   // onderrand paneelveld
-    new T.Vector3( 3.6, 4.6, 4.4),   // over de goot naar voren
-    new T.Vector3( 0.6, 2.9, 5.6),   // langs de voorgevel omlaag
-    new T.Vector3(-2.4, 1.7, 5.95),  // naar de batterij toe
-    new T.Vector3(-3.55,1.55,6.04)   // kop van de accu
-  ], false, 'catmullrom', 0.4);
+    new T.Vector3( 2.9, 5.55, 1.9),  // onderrand paneelveld
+    new T.Vector3( 0.2, 5.05, 4.86), // langs de goot naar links, tot boven de accu
+    new T.Vector3(-3.42, 3.7, 4.9),  // hier de bocht naar beneden
+    new T.Vector3(-3.45, 2.0, 4.94), // recht langs de gevel omlaag
+    new T.Vector3(-3.5, 1.35, 5.75)  // naar de kop van de accu
+  ], false, 'catmullrom', 0.15);
   const stroomTex=tex(64,8,g=>{
     g.fillStyle='#02140c'; g.fillRect(0,0,64,8);
     for(let i=0;i<4;i++){
@@ -382,7 +388,7 @@ function bouw(){
   stroomTex.repeat.set(11,1);
   const stroomMat=new T.MeshBasicMaterial({map:stroomTex, color:0x9dffcc,
     transparent:true, opacity:0, blending:T.AdditiveBlending, depthWrite:false, side:T.DoubleSide});
-  const stroom=new T.Mesh(new T.TubeGeometry(stroomPad,96,0.058,8,false), stroomMat);
+  const stroom=new T.Mesh(new T.TubeGeometry(stroomPad,96,0.05,8,false), stroomMat);
   scene.add(stroom);
 
   /* ---- licht: warme zon met schaduw, koele tegenhanger, zachte hemel ---- */
@@ -433,9 +439,9 @@ function bouw(){
   zet(); addEventListener('resize', zet);
 
   /* ---- de choreografie: leggen -> accu -> blijvende rust met stroom ---- */
-  const STAP=380, DUUR=300, ACCU_D=800, oog=24*Math.PI/180;
+  const STAP=380, DUUR=300, ACCU_D=800, oog=30*Math.PI/180;
   const ease=p=>1-Math.pow(1-p,3);
-  let fase='leg', t0=performance.now()+700, hoek=0.9;
+  let fase='leg', t0=performance.now()+700, hoek=0.72;
   let zichtbaar=true, actief=true, getoond=false;
 
   new IntersectionObserver(es=>{ zichtbaar=es[0].isIntersecting; },{threshold:.05}).observe(bak);
@@ -491,7 +497,7 @@ function bouw(){
       stroomTex.offset.x-=0.018;             // neonpulsen stromen naar de accu
     }
 
-    hoek += 0.0028;
+    // de camera staat stil op de foto-positie (geen rotatie meer)
     const straal=Math.cos(oog)*afstand;
     camera.position.set(mid.x+Math.sin(hoek)*straal, mid.y+Math.sin(oog)*afstand, mid.z+Math.cos(hoek)*straal);
     camera.lookAt(mid);
