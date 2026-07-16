@@ -1,5 +1,5 @@
 /* ==================================================================
-   OpwekWijzer — hero3d.js  (v2.6.0)
+   OpwekWijzer — hero3d.js  (v2.6.1)
    Het demopand in de hero: een Nederlands rijtjeshuis waarop de panelen
    zich één voor één leggen, met een meetikkende teller.
 
@@ -27,6 +27,11 @@
      en de hele set lager op het dak, zodat beide rijen los in beeld staan.
    - de bovenste rij landt nu eerst, daarna de onderste.
    - camera weer iets minder van bovenaf (36°), dichter bij de foto-hoek.
+   v2.6.1 — de échte oorzaak gevonden:
+   - het paneelvlak lag op W/2 terwijl het dak tot de overstekrand (W/2+ov)
+     loopt; daardoor zakte de onderste rij ónder het dakoppervlak en verdween
+     zodra hij 'landde'. Eave-referentie nu op de overstekrand -> paneelvlak
+     exact parallel aan het dak, elke rij zichtbaar 9 cm erboven.
 
    Zuinig by design (ongewijzigd):
    - three.js laadt pas als de browser niets te doen heeft (idle)
@@ -250,7 +255,12 @@ function bouw(){
   heg2.position.set(-5.0,.35,Dp/2+.75); scene.add(heg2);   // opgeschoven: hier staat de batterij
 
   /* ---- de panelen op de zuidhelling: 2 rijen x 7 = 14 ---- */
-  const eave=new T.Vector3(W/2, dakY, 0), nok=new T.Vector3(0, NH, 0);
+  // BELANGRIJK: de eave-referentie ligt op de overstekrand (W/2+ov), NIET op
+  // W/2. Het dakvlak loopt namelijk van de nok naar de overstekrand; namen we
+  // W/2 dan helde het paneelvlak nét anders dan het dak en zakten de onderste
+  // panelen ónder het dakoppervlak (onzichtbaar). Nu ligt het paneelvlak exact
+  // parallel aan het dak en zit elke rij netjes 9 cm erboven.
+  const eave=new T.Vector3(W/2+ov, dakY, 0), nok=new T.Vector3(0, NH, 0);
   const uHelling=new T.Vector3().subVectors(nok,eave).normalize();
   const uDiep=new T.Vector3(0,0,1);
   // uHelling x uDiep wijst van het dak AF (y omhoog). Andersom lag alles in het dak (bug v2.1).
