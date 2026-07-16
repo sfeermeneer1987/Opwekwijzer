@@ -1,5 +1,5 @@
 /* ==================================================================
-   OpwekWijzer — hero3d.js  (v2.5.0)
+   OpwekWijzer — hero3d.js  (v2.6.0)
    Het demopand in de hero: een Nederlands rijtjeshuis waarop de panelen
    zich één voor één leggen, met een meetikkende teller.
 
@@ -20,12 +20,13 @@
      onderste paneelrij volledig zichtbaar is (niet meer die smalle rand).
    - de stroomkabel loopt nu recht langs de gevel omlaag naar de accu,
      geen diagonaal meer over het dak.
-   v2.5.0 — nog duidelijker:
-   - camera kijkt nu echt van bovenaf op het dak, zodat beide paneelrijen
-     volledig in beeld staan.
-   - de thuisbatterij is fors groter en duidelijker.
-   - de stroomkabel is nu een zwarte, dikkere buis waar de neon-stroom
-     zichtbaar overheen loopt.
+   v2.5.0 — grotere accu en zwarte kabel met zichtbare stroom.
+   v2.6.0 — de echte fix voor de onderste rij:
+   - de rijen stonden op het scherm vrijwel tegen elkaar (schermgat 0,01) en
+     versmolten tot één band; nu een aparte ruime rij-afstand (ROWGAP 0,60)
+     en de hele set lager op het dak, zodat beide rijen los in beeld staan.
+   - de bovenste rij landt nu eerst, daarna de onderste.
+   - camera weer iets minder van bovenaf (36°), dichter bij de foto-hoek.
 
    Zuinig by design (ongewijzigd):
    - three.js laadt pas als de browser niets te doen heeft (idle)
@@ -256,7 +257,11 @@ function bouw(){
   const nrm=new T.Vector3().crossVectors(uHelling,uDiep).normalize();
   // RAND groter dan voorheen (was 0,40): de onderste rij komt zo hoger op de
   // helling te liggen, vrij van de goot en dus volledig in beeld.
-  const PW=1.13, PH=1.72, GAP=0.14, RAND=1.05, RIJEN=2, KOL=7;
+  // GAP = ruimte tussen kolommen; ROWGAP = ruimte tussen de twee rijen.
+  // Die stond eerder gelijk (0,14) waardoor de rijen op het scherm tegen
+  // elkaar plakten en als één band lazen. Nu ruim uit elkaar, en de hele
+  // set lager op het dak (RAND 1,05 -> 0,55) zodat beide rijen los in beeld staan.
+  const PW=1.13, PH=1.72, GAP=0.14, ROWGAP=0.60, RAND=0.55, RIJEN=2, KOL=7;
 
   const start=new T.Vector3().copy(eave)
     .addScaledVector(uHelling, RAND)
@@ -264,9 +269,10 @@ function bouw(){
     .addScaledVector(nrm, 0.09);
 
   const panelen=[];
-  for(let r=0;r<RIJEN;r++) for(let c=0;c<KOL;c++){
+  // bovenste rij eerst opbouwen (r hoog -> laag) zodat die als eerste 'landt'
+  for(let r=RIJEN-1;r>=0;r--) for(let c=0;c<KOL;c++){
     const o=new T.Vector3().copy(start)
-      .addScaledVector(uHelling, r*(PH+GAP))
+      .addScaledVector(uHelling, r*(PH+ROWGAP))
       .addScaledVector(uDiep, c*(PW+GAP));
     const p1=o.clone(),
           p2=o.clone().addScaledVector(uDiep,PW),
@@ -433,7 +439,7 @@ function bouw(){
 
   /* ---- camera ---- */
   const camera=new T.PerspectiveCamera(40, 1, 0.5, 300);
-  const mid=new T.Vector3(0, NH*0.52, 0);
+  const mid=new T.Vector3(0, NH*0.46, 0);
   const bol=Math.max(W,Dp,NH)*0.72+2;
   let afstand=bol*2.6;
   function zet(){
@@ -449,7 +455,7 @@ function bouw(){
   zet(); addEventListener('resize', zet);
 
   /* ---- de choreografie: leggen -> accu -> blijvende rust met stroom ---- */
-  const STAP=380, DUUR=300, ACCU_D=800, oog=40*Math.PI/180;
+  const STAP=380, DUUR=300, ACCU_D=800, oog=36*Math.PI/180;
   const ease=p=>1-Math.pow(1-p,3);
   let fase='leg', t0=performance.now()+700, hoek=0.72;
   let zichtbaar=true, actief=true, getoond=false;
