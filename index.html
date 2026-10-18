@@ -9,6 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Skyguard">
 <meta name="description" content="Skyguard: fly over a living city and answer calls for help.">
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Skyguard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -341,7 +342,12 @@ body.city #hurtFlash{display:block}
 #debug .feels button small{display:block;font-weight:500;font-size:9px;color:var(--muted);letter-spacing:0}
 #debug .feels button.act{background:var(--sun);border-color:var(--sun-hi);color:var(--ink)}#debug .feels button.act small{color:var(--ink)}
 #btnTune:focus-visible{outline:2px solid var(--energy);outline-offset:2px}
-body.pre #btnTune{visibility:hidden}
+body.pre #btnTune,body.pre #btnView{visibility:hidden}
+#btnView{position:fixed;z-index:6;top:calc(12px + env(safe-area-inset-top,0px));left:calc(62px + env(safe-area-inset-left,0px));height:40px;padding:0 11px 0 9px;border-radius:10px;background:var(--glass);border:1px solid var(--line);color:var(--text);display:flex;align-items:center;gap:6px;font:700 13px/1 var(--hud);letter-spacing:.08em;cursor:pointer;opacity:.85;touch-action:none}
+#btnView span{font-size:15px;color:var(--energy)}
+#btnView[aria-pressed=true]{border-color:var(--energy)}
+#btnAutoView{height:36px;padding:0 14px;border-radius:18px;background:var(--glass);border:1px solid var(--line);color:var(--text);font:700 11px/1 var(--hud);letter-spacing:.1em;cursor:pointer}
+#btnAutoView[aria-pressed=true]{background:var(--energy);border-color:var(--energy);color:var(--ink)}
 #debug{position:fixed;z-index:7;left:calc(10px + env(safe-area-inset-left,0px));top:calc(10px + env(safe-area-inset-top,0px));
   bottom:calc(10px + env(safe-area-inset-bottom,0px));width:min(330px,calc(100vw - 20px));overflow:auto;touch-action:pan-y;
   background:var(--glass-hi);border:1px solid var(--line);border-radius:10px;padding:12px 14px;-webkit-user-select:text;user-select:text}
@@ -443,6 +449,7 @@ html.js .nojs{display:none}
 </div>
 
 <button id="btnTune" aria-label="Pause: settings, sound, full screen"><i></i></button>
+<button id="btnView" aria-pressed="false" aria-label="Third person view (tap for first person)"><span aria-hidden="true">◉</span><b>3RD</b></button>
 <div id="msHud"><div id="msWave">WAVE 1/5</div><div id="msScore">0</div><div id="msCombo" hidden></div></div>
 <div id="cityBar"><span>CITY</span><div class="hpb"><i id="cityFill"></i></div><b id="cityNum">100%</b></div>
 <div id="brHud"><div id="brLeft">2 LEFT</div><div id="brStorm">STORM CLOSES IN 0:25</div></div>
@@ -456,6 +463,7 @@ html.js .nojs{display:none}
   <div class="top"><h2>Tuning</h2><button class="dbtn" id="dbgClose">CLOSE</button></div>
   <div class="sys"><button id="btnFull" aria-label="Full screen">⛶ FULL SCREEN</button><button id="btnSound">SOUND ON</button></div>
   <h3>FLIGHT FEEL</h3>
+  <div class="sys"><button id="btnAutoView" aria-pressed="true">AUTO VIEW: ON</button><span class="hint" style="margin:0;align-self:center">land = first person, fly = third person · ◉ button switches any time</span></div>
   <div class="sys"><button id="btnStunts" aria-pressed="false">STUNTS: OFF</button><span class="hint" style="margin:0;align-self:center">quick stick flick = barrel roll / loop</span></div>
   <div class="feels" id="feels"></div>
   <div class="hint" id="feelHint"></div>
@@ -485,6 +493,7 @@ html.js .nojs{display:none}
         <dt>FLY</dt><dd>Double-tap the stick to take off. Double-tap again to land.</dd>
         <dt>DASH</dt><dd>A short burst that smashes through things and dodges shots. Uses the orange meter.</dd>
         <dt>POWER</dt><dd>Big right button: tap to fire, hold to beam or spray, drag while holding to aim. The small buttons switch power.</dd>
+        <dt>VIEW</dt><dd>Land and you see through your own eyes; take off and the camera pulls back. The ◉ button (top left) switches any time.</dd>
         <dt>CALLS</dt><dd>Follow the orange marker. Finish calls for XP, upgrades and safer districts. Tap the map (top left) to see everything.</dd>
       </dl>
       <div id="iosTip" hidden>📲 <b>iPhone full screen:</b> tap <b>Share</b> <span aria-hidden="true">⎙</span> → <b>Add to Home Screen</b>, then start Skyguard from its icon.</div>
@@ -543,7 +552,11 @@ const CFG_DEFAULTS = {
   pitchRate: 2.8,       // rad/s, stick up/down in the air
   invertPitch: 0,       // 1 = pull down to climb (plane style)
   flightMode: 0,        // 0 = classic plane flight (stick tilts the nose; the default), 1 = fly where the camera looks
-  stuntMoves: 0,        // 0 = off: the stick only steers, like the original flying (default); 1 = quick stick flicks do a barrel roll / loop
+  stuntMoves: 0,
+  autoView: 1,          // 1 = landing switches to first person, taking off back to third person
+  fpView: 0,            // your own view choice when auto view is off (0 third, 1 first person)
+  fpFov: 78,            // first-person field of view
+  fpStickTurn: 1,       // first person on foot: 1 = stick left/right turns you, 0 = steps sideways (shooter style)        // 0 = off: the stick only steers, like the original flying (default); 1 = quick stick flicks do a barrel roll / loop
   flightFeel: 0,        // which flight-feel preset was picked last (0 today's, 1 cruiser, 2 hero, 3 ace); the values themselves are the sliders
   takeoffPower: 26,     // m/s upward kick when you press FLY
   runSpeed: 9,          // m/s on foot
@@ -619,6 +632,8 @@ const TUNE = [
   ['camHeight','Height',0,6,0.1,' m'],
   ['fovBase','Field of view',45,95,1,'°'],
   ['fovBoost','Boost field of view',55,125,1,'°'],
+  ['fpFov','First-person field of view',60,100,1,'°'],
+  ['fpStickTurn','First person: stick turns (1) or side-steps (0)',0,1,1,''],
   ['bankAmount','Bank in turns',0,2,0.05,''],
   ['City'],
   ['breachSpeed','Breach speed (with BOOST)',5,120,1,' m/s'],
@@ -1657,6 +1672,7 @@ bindHold('btnBoost', 'boost', onBoostPress);
 window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (k === '`') { toggleDebug(); return; }
+  if (k === 'v' && !e.repeat && started) { viewToggle(); return; }
   if (k === 'shift' && !keys.shift) onBoostPress();
   if (k === ' ' && !e.repeat) window.flyDown();
   if (k === 'e' && !e.repeat) powerDown();
@@ -1886,6 +1902,7 @@ function takeOff(){
   vel.y = Math.max(vel.y, CFG.takeoffPower);
   spawnRing(tmp.copy(pos).addScaledVector(UP, -FEET + 0.1), UP);
   trauma = Math.min(1, trauma + 0.2); buzz(25); whoosh();
+  if (VIEW) viewOnTakeOff();
 }
 function startDrop(){ if (mode === 'fly' && airT > 0.3) dropping = true; }
 function land(impactSpeed){
@@ -1895,12 +1912,7 @@ function land(impactSpeed){
   camYaw = yawS; camPitch = DEFAULT_PITCH;
   heading = H;
   vel.y = 0; vel.x *= 0.3; vel.z *= 0.3;
-  if (impactSpeed > 18) { // superhero landing
-    landT = clamp(impactSpeed / 120, 0.35, 0.6);
-    spawnRing(tmp.copy(pos).addScaledVector(UP, -FEET + 0.1), UP);
-    trauma = Math.min(1, trauma + clamp(impactSpeed / 90, 0.2, 0.7));
-    buzz(Math.round(clamp(impactSpeed, 20, 70))); boomSound(clamp(impactSpeed / 90, 0.3, 1), true);
-  }
+  powerLanding(impactSpeed); // every landing is a superhero landing: crack, rubble, dust, shockwave (src/view.js)
 }
 respawn();
 
@@ -2124,10 +2136,12 @@ function update(dt, t){
     /* ===== ON FOOT: normal third-person running ===== */
     if (ldx || ldy) { camYaw -= ldx * sens; camPitch -= ldy * sens * 0.8; }
     if (!started) camYaw += dt * 0.12;
+    const fpOn = VIEW && VIEW.k > 0.5, fpTurn = fpOn && CFG.fpStickTurn >= 0.5;
+    if (fpTurn) camYaw -= jx * Math.abs(jx) * 2.3 * dt; // first person: stick left/right turns you
     camPitch = clamp(camPitch, -1.2, 0.7);
     Fh.set(Math.sin(camYaw), 0, Math.cos(camYaw));
     Rh.set(-Math.cos(camYaw), 0, Math.sin(camYaw));
-    desired.set(0, 0, 0).addScaledVector(Fh, jy).addScaledVector(Rh, jx);
+    desired.set(0, 0, 0).addScaledVector(Fh, jy).addScaledVector(Rh, fpTurn ? jx * 0.25 : jx);
     const mag = Math.min(1, desired.length());
     if (mag > 0.001) desired.normalize();
     if (landT > 0) landT -= dt;
@@ -2152,11 +2166,11 @@ function update(dt, t){
     } else grounded = false;
     // turn assist: camera swings behind your running direction
     const hs0 = Math.hypot(vel.x, vel.z);
-    if (t - look.last > Math.min(CFG.camReturnDelay, 0.6) && hs0 > 2 && mag > 0.05) {
+    if (!fpOn && t - look.last > Math.min(CFG.camReturnDelay, 0.6) && hs0 > 2 && mag > 0.05) {
       const front = (vel.x * Fh.x + vel.z * Fh.z) / hs0;
       if (front > -0.2) camYaw += angDiff(Math.atan2(vel.x, vel.z), camYaw) * damp(CFG.camFollow * 2.2, dt);
     }
-    if (t - look.last > 1.5) camPitch += (DEFAULT_PITCH - camPitch) * damp(CFG.pitchLevel, dt);
+    if (t - look.last > 1.5) camPitch += ((fpOn ? -0.06 : DEFAULT_PITCH) - camPitch) * damp(CFG.pitchLevel, dt);
     if (hs0 > 0.6) heading += angDiff(Math.atan2(vel.x, vel.z), heading) * damp(14, dt);
     if (castFacing()) heading += angDiff(Math.atan2(shotDir.x, shotDir.z), heading) * damp(18, dt);
   }
@@ -2271,8 +2285,9 @@ function update(dt, t){
     camera.position.y += (Math.sin(t * 53) + Math.sin(t * 29)) * 0.25 * sh;
     camera.rotation.z += Math.sin(t * 47) * 0.04 * sh;
   }
+  viewCamera(dt); // first-person view (src/view.js)
   fovKick = Math.max(0, fovKick - dt * 18);
-  const fovT = CFG.fovBase + (CFG.fovBoost - CFG.fovBase) * boostT + fovKick;
+  const fovT = viewFov(CFG.fovBase, (CFG.fovBoost - CFG.fovBase) * boostT, fovKick);
   const nf = camera.fov + (fovT - camera.fov) * damp(6, dt);
   if (Math.abs(nf - camera.fov) > 0.01) { camera.fov = nf; camera.updateProjectionMatrix(); }
   sky.position.copy(camera.position);
@@ -2978,6 +2993,7 @@ function updatePowers(dt, t){
   hero.updateMatrixWorld(true); camera.updateMatrixWorld();
   armR.localToWorld(handPos.set(0, -0.72, 0));
   camera.getWorldDirection(aimDir);
+  if (VIEW && VIEW.k > 0.5) viewHandPos(handPos); // first person: powers come from your right fist
 
   const autoAim = !BR.on && CFG.aimMode >= 0.5 && !powerDrag;
   const cone = (autoAim ? CFG.lockCone : CFG.aimAssist) * Math.PI / 180;
@@ -6509,12 +6525,7 @@ function startLoop(){
 }
 function flowLanding(impact, wasFlying){
   if (!started) return;
-  if (impact > 28) {                                                  // HERO LANDING: the street cracks, everyone near is pushed back
-    scare(pos, 22);
-    for (const e of props) if (e.alive && !e.held && e.pos.distanceTo(pos) < 12) { tmp.subVectors(e.pos, pos).setY(0).normalize(); e.vel.x += tmp.x * 9; e.vel.y += 5; e.vel.z += tmp.z * 9; e.moving = true; }
-    dustFX(mv.copy(pos).addScaledVector(UP, -FEET + 0.2), 14, 2.2);
-    flowAdd(12, 'HERO LANDING', 8);
-  } else if (wasFlying && impact < 7) flowAdd(5, 'SOFT LANDING', 2);
+  if (impact > 28) flowAdd(12, 'HERO LANDING', 8);                   // the crack, rubble and push-back happen on every landing (powerLanding in view.js); a big one also fills FLOW
 }
 function flowWallLaunch(){
   vel.x *= 1.25; vel.z *= 1.25;                                       // jumping off a wall fires you across the street
@@ -6807,6 +6818,198 @@ function stage3Step(dt){
 const _s3v = new THREE.Vector3();
 
 /* =====================================================================
+   FIRST-PERSON VIEW + POWER LANDINGS
+   - View button (top left, next to pause) switches 1ST / 3RD person any time.
+   - AUTO VIEW (pause panel, on by default): landing switches to first person, taking off back to third person.
+     Your own switch holds until the next landing or take-off.
+   - Big moves show the hero: wall-runs, stunts, lifting something heavy and the landing itself use third person
+     for a moment, then the camera glides back into your eyes.
+   - Comfort: level horizon, no head bob, calm field of view, only a little shake.
+   - Every landing is a POWER LANDING: a crack in the ground, rubble and dust flying away from you, a shockwave.
+   ===================================================================== */
+var VIEW = null; // var: other code may ask for it before this part has run
+VIEW = { want: 0, k: 0, at: 0, startAt: 0, e: 0, lastMode: 'run' };
+const _vq = new THREE.Quaternion(), _vq2 = new THREE.Quaternion(), _veye = new THREE.Vector3(), _vlook = new THREE.Vector3(), _vsh = new THREE.Vector3(), _vm = new THREE.Matrix4();
+
+/* ---------- the hands (their own little scene, drawn on top of the world) ---------- */
+const HS = new THREE.Scene();
+const handHemi = new THREE.HemisphereLight(0xd6ecff, 0x5f7f58, 0.7); HS.add(handHemi);
+const handSun = new THREE.DirectionalLight(0xfff2dc, 0.8); HS.add(handSun); HS.add(handSun.target);
+const HG = new THREE.Group(); HS.add(HG);
+const handMat = { suit: new THREE.MeshLambertMaterial({ color: 0x19b3c6 }), glove: new THREE.MeshLambertMaterial({ color: 0x16224a }), cuff: new THREE.MeshLambertMaterial({ color: 0xff7a1a }) };
+const handInk = new THREE.MeshBasicMaterial({ color: 0x0b1530, side: THREE.BackSide, visible: !REAL });
+function handPart(geo, mat, parent, x, y, z){ const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m); const o = new THREE.Mesh(geo, handInk); o.scale.setScalar(1.08); m.add(o); return m; }
+function makeArm(s){
+  const a = new THREE.Group(), inner = new THREE.Group(); a.add(inner);
+  const fore = handPart(new THREE.CylinderGeometry(0.06, 0.05, 0.62, 10), handMat.suit, inner, 0, 0, 0.27); fore.rotation.x = Math.PI / 2;
+  const cuff = handPart(new THREE.CylinderGeometry(0.066, 0.066, 0.06, 10), handMat.cuff, inner, 0, 0, -0.05); cuff.rotation.x = Math.PI / 2;
+  const fist = handPart(new THREE.BoxGeometry(0.15, 0.12, 0.13), handMat.glove, inner, 0, 0, -0.14); fist.rotation.z = 0.12 * s;
+  handPart(new THREE.BoxGeometry(0.155, 0.04, 0.06), handMat.glove, inner, 0, 0.055, -0.19); // knuckles
+  a.userData = { s, inner, rest: new THREE.Vector3(0.25 * s, -0.29, -0.52), cast: new THREE.Vector3(0.08 * s, -0.17, -0.56) };
+  return a;
+}
+const armFL = makeArm(-1), armFR = makeArm(1); HG.add(armFL, armFR); armFL.scale.setScalar(0.82); armFR.scale.setScalar(0.82);
+const fistGlowMat = new THREE.MeshBasicMaterial({ color: 0x9ff6ff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false });
+const fistGlow = new THREE.Mesh(new THREE.SphereGeometry(0.1, 14, 10), fistGlowMat); fistGlow.position.set(0, 0, -0.2); armFR.userData.inner.add(fistGlow); fistGlow.visible = false;
+const fistGlowL = fistGlow.clone(); armFL.userData.inner.add(fistGlowL);
+const _hv = new THREE.Vector3(), _hv2 = new THREE.Vector3();
+let punchT = -9;
+function poseHands(dt){
+  const hk = smooth(0.62, 1, VIEW.k), slide = (1 - hk) * 0.4;
+  const runK = mode === 'run' && grounded ? clamp(Math.hypot(vel.x, vel.z) / Math.max(1, CFG.runSpeed), 0, 1.3) : 0;
+  const both = charging || beamT > 0 || spraying;
+  const castR = castBlend, castL = both ? castBlend : 0;
+  if (nowT - castT < 0.05) punchT = nowT;
+  const punch = Math.max(0, 1 - (nowT - punchT) / 0.18);
+  for (const a of [armFL, armFR]) {
+    const u = a.userData, c = a === armFR ? castR : castL, sw = Math.sin(runPhase + (u.s > 0 ? 0 : Math.PI)) * 0.045 * runK;
+    a.position.lerpVectors(u.rest, u.cast, c);
+    a.position.y += -slide + Math.abs(sw) * 0.4 - (mode === 'fly' ? 0.05 : 0);
+    a.position.z += sw - (a === armFR ? punch * 0.12 : 0);
+    if (a === armFL && grabbed && grabbed.kind === 'person') { a.position.set(-0.12, -0.2, -0.5); }
+    a.rotation.set(0.1 + 0.18 * (1 - c), (0.32 - 0.22 * c) * u.s * 1, 0.1 * u.s);
+  }
+  // power glow on the fists
+  const glowOn = charging || beamT > 0 || spraying;
+  fistGlow.visible = glowOn || punch > 0; fistGlowL.visible = both && glowOn;
+  const gs = 0.8 + (charging ? charge * 1.4 : 0) + (beamT > 0 ? 0.6 + 0.15 * Math.sin(nowT * 40) : 0) + punch * 0.8;
+  fistGlow.scale.setScalar(gs); fistGlowL.scale.setScalar(gs * 0.8);
+  fistGlowMat.color.setHex(power === 'water' ? 0x7fc4ff : 0x9ff6ff);
+  // light the hands like the world around them (day, dusk, night)
+  handHemi.intensity = hemi.intensity * 1.1; handHemi.color.copy(hemi.color); handHemi.groundColor.copy(hemi.groundColor);
+  handSun.intensity = sun.intensity * 0.75; handSun.color.copy(sun.color);
+  HG.position.copy(camera.position); HG.quaternion.copy(camera.quaternion);
+  handSun.position.copy(camera.position).add(_hv.set(4, 9, 3)); handSun.target.position.copy(camera.position);
+  HG.updateMatrixWorld(true);
+}
+/* where powers come from in first person: just in front of the right fist */
+function viewHandPos(out){
+  armFR.userData.inner.localToWorld(out.set(0, 0, -0.22));
+  out.addScaledVector(aimDir, 0.9);
+  return out;
+}
+function renderHands(){
+  if (!VIEW || VIEW.k < 0.62) return;
+  const ac = renderer.autoClear; renderer.autoClear = false; renderer.clearDepth(); renderer.render(HS, camera); renderer.autoClear = ac;
+}
+
+/* ---------- switching ---------- */
+function viewBlocked(){
+  return !started || mode === 'wall' || STUNT.roll > 0 || STUNT.loop > 0 || (grabbed && grabbed.kind !== 'person') || (mode === 'run' && landT > 0);
+}
+function viewIsFirst(){ return VIEW.want === 1; }
+function syncViewBtn(){
+  const b = $('btnView'); if (!b) return;
+  const first = VIEW.want === 1;
+  b.querySelector('b').textContent = first ? '1ST' : '3RD';
+  b.setAttribute('aria-pressed', first ? 'true' : 'false');
+  b.setAttribute('aria-label', first ? 'First person view (tap for third person)' : 'Third person view (tap for first person)');
+}
+function viewSet(v){ VIEW.want = v ? 1 : 0; VIEW.at = 0; VIEW.startAt = 0; if (CFG.autoView < 0.5) { CFG.fpView = VIEW.want; saveCfg(); } syncViewBtn(); }
+function viewToggle(){ viewSet(!VIEW.want); buzz(10); tone('sine', VIEW.want ? 760 : 520, VIEW.want ? 980 : 380, 0.07, 0.05); }
+function viewOnLand(){ VIEW.startAt = 0; if (CFG.autoView >= 0.5) VIEW.at = nowT + 0.5; }   // after the landing has been seen from outside
+function viewOnTakeOff(){ VIEW.startAt = 0; if (CFG.autoView >= 0.5) { VIEW.at = 0; VIEW.want = 0; syncViewBtn(); } }
+function viewOnStart(){ VIEW.k = 0; VIEW.at = 0; if (CFG.autoView >= 0.5) { VIEW.want = 0; VIEW.startAt = nowT + 3; } else VIEW.want = CFG.fpView >= 0.5 ? 1 : 0; syncViewBtn(); }
+
+/* ---------- the camera (called at the end of the normal camera code) ---------- */
+function viewCamera(dt){
+  if (mode !== VIEW.lastMode) { // flying by any route (take-off, meteor storm, a wall jump) = third person when auto view is on
+    if (mode === 'fly' && CFG.autoView >= 0.5) { VIEW.want = 0; VIEW.at = 0; syncViewBtn(); }
+    VIEW.lastMode = mode;
+  }
+  if (VIEW.at && nowT >= VIEW.at) { VIEW.at = 0; if (mode !== 'fly') { VIEW.want = 1; syncViewBtn(); } }
+  if (VIEW.startAt && nowT >= VIEW.startAt) { VIEW.startAt = 0; if (mode === 'run' && CFG.autoView >= 0.5) { VIEW.want = 1; syncViewBtn(); } } // standing on the street at the start: into your eyes
+  const tgt = VIEW.want && !viewBlocked() ? 1 : 0;
+  VIEW.k += (tgt - VIEW.k) * damp(tgt ? 5.5 : 8, dt); if (Math.abs(tgt - VIEW.k) < 0.003) VIEW.k = tgt;
+  const e = VIEW.e = VIEW.k * VIEW.k * (3 - 2 * VIEW.k);
+  const hide = e > 0.8;
+  if (hero.visible === hide) hero.visible = !hide;
+  trail.visible = e < 0.4;
+  if (e <= 0.0005) return;
+  // eyes: the head of the hero (upright on foot, out in front when flying flat)
+  const fb = mode === 'fly' ? 1 : 0;
+  _veye.copy(pos); _veye.y += 0.78 - 0.45 * fb; _veye.addScaledVector(Lc, 0.12 + 0.5 * fb);
+  _vsh.subVectors(camera.position, camWant);            // the shake the third-person camera got this frame
+  _vq.copy(camera.quaternion);
+  _vlook.copy(_veye).add(Lc);
+  _vm.lookAt(_veye, _vlook, UP); _vq2.setFromRotationMatrix(_vm);
+  camera.position.lerp(_veye, e).addScaledVector(_vsh, -e * 0.7);  // keep 30 % of the shake: landings still thump
+  _vq.slerp(_vq2, e); camera.quaternion.copy(_vq);
+  camera.updateMatrixWorld();
+  if (VIEW.k > 0.5) poseHands(dt);
+}
+/* first-person field of view: calmer than third person (less widening at speed) */
+function viewFov(base, boostPart, kick){ const e = VIEW ? VIEW.e : 0; return base + (CFG.fpFov - base) * e + boostPart * (1 - 0.55 * e) + kick * (1 - 0.6 * e); }
+
+/* ---------- power landing: every landing hits the ground hard ---------- */
+const crackTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'), q = mulberry32(911);
+  const g = x.createRadialGradient(64, 64, 4, 64, 64, 30); g.addColorStop(0, 'rgba(10,10,14,0.55)'); g.addColorStop(1, 'rgba(10,10,14,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+  x.strokeStyle = 'rgba(12,12,16,0.9)'; x.lineCap = 'round';
+  for (let i = 0; i < 11; i++) {
+    let a = i / 11 * TAU + q() * 0.4, r = 6, px = 64 + Math.cos(a) * r, py = 64 + Math.sin(a) * r;
+    x.lineWidth = 3.2; x.beginPath(); x.moveTo(px, py);
+    while (r < 58) { r += 6 + q() * 8; a += (q() - 0.5) * 0.5; px = 64 + Math.cos(a) * r; py = 64 + Math.sin(a) * r; x.lineTo(px, py); x.lineWidth = Math.max(0.8, x.lineWidth * 0.82); x.stroke(); x.beginPath(); x.moveTo(px, py);
+      if (q() < 0.25) { const b = a + (q() - 0.5) * 1.4; x.save(); x.lineWidth *= 0.7; x.beginPath(); x.moveTo(px, py); x.lineTo(px + Math.cos(b) * 10, py + Math.sin(b) * 10); x.stroke(); x.restore(); x.beginPath(); x.moveTo(px, py); } }
+  }
+  const t = new THREE.CanvasTexture(c); if (REAL) t.encoding = THREE.sRGBEncoding; return t;
+})();
+const CRACKS = [];
+for (let i = 0; i < 4; i++) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: crackTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+  m.rotation.x = -Math.PI / 2; m.visible = false; m.renderOrder = 2; scene.add(m); CRACKS.push({ m, t: 0 });
+}
+let crackNext = 0;
+const RUBBLE = [0x55585f, 0x8d8a82, 0x6b6e75, 0x7a7466];
+const LAND = { count: 0, last: -9, lastS: 0 };
+const _lp = new THREE.Vector3();
+function powerLanding(impact){
+  const s = clamp(impact / 60, 0.55, 1.3);               // even a gentle touchdown lands with power
+  const surf = surfaceUnder(pos.x, pos.z, pos.y);
+  _lp.set(pos.x, surf + 0.05, pos.z);
+  LAND.count++; LAND.last = nowT; LAND.lastS = s;
+  landT = clamp(0.3 + 0.22 * s, 0.35, 0.6);               // the kneeling superhero pose
+  // rubble flying away from you in every direction
+  const n = Math.round(9 + 9 * s);
+  for (let i = 0; i < n; i++) {
+    const a = i / n * TAU + rnd(-0.25, 0.25), dx = Math.sin(a), dz = Math.cos(a), sp = rnd(7, 14) * s;
+    spawnDebris(mv.set(_lp.x + dx * 0.9, _lp.y + 0.25, _lp.z + dz * 0.9), 1, RUBBLE[i % RUBBLE.length], 0.5 + 0.35 * s, 1.2, dx * sp, rnd(4, 9) * s, dz * sp);
+  }
+  // a ring of dust rolling outward
+  const dn = Math.round(18 + 14 * s);
+  for (let i = 0; i < dn; i++) {
+    const a = i / dn * TAU + rnd(-0.1, 0.1), dx = Math.sin(a), dz = Math.cos(a), sp = rnd(8, 15) * s;
+    emit(FXS, _lp.x + dx * 0.7, _lp.y + 0.35, _lp.z + dz * 0.7, dx * sp, rnd(0.4, 2.2), dz * sp, rnd(1.0, 1.7), 1.5 * s, 4.2 * s, 0.8, 0.76, 0.68, 0.7, 2.2, -0.4);
+  }
+  // the crack it leaves
+  const c = CRACKS[crackNext]; crackNext = (crackNext + 1) % CRACKS.length;
+  c.t = 7; c.m.visible = true; c.m.position.set(_lp.x, surf + 0.03, _lp.z); c.m.rotation.z = rnd(0, TAU); c.m.scale.setScalar(2.6 + 2.2 * s); c.m.material.opacity = 1;
+  // shockwave, thump, sound
+  spawnRing(mv.set(pos.x, surf + 0.1, pos.z), UP);
+  trauma = Math.min(1, trauma + 0.22 + 0.3 * s);
+  if (s > 0.9) addHitStop(0.04);
+  buzz(Math.round(25 + 35 * s)); boomSound(clamp(0.35 + 0.45 * s, 0.3, 1), true);
+  // people flinch, loose things are pushed away
+  scare(pos, 12 + 10 * s);
+  const pr = 5 + 6 * s;
+  for (const e of props) if (e.alive && !e.held && e.pos.distanceTo(pos) < pr) { tmp.subVectors(e.pos, pos).setY(0).normalize(); e.vel.x += tmp.x * 7 * s; e.vel.y += 4 * s; e.vel.z += tmp.z * 7 * s; e.moving = true; }
+  viewOnLand();
+}
+function viewStep(dt){
+  for (const c of CRACKS) if (c.t > 0) { c.t -= dt; c.m.material.opacity = Math.min(1, c.t / 2); if (c.t <= 0) c.m.visible = false; }
+}
+
+/* ---------- buttons ---------- */
+function syncAutoView(){ const on = CFG.autoView >= 0.5, b = $('btnAutoView'); b.textContent = 'AUTO VIEW: ' + (on ? 'ON' : 'OFF'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+$('btnAutoView').addEventListener('click', () => {
+  CFG.autoView = CFG.autoView >= 0.5 ? 0 : 1; if (CFG.autoView < 0.5) CFG.fpView = VIEW.want; saveCfg(); syncAutoView(); buzz(10);
+  toast(CFG.autoView >= 0.5 ? '<b>Auto view on.</b> Landing puts you in first person, taking off in third person. The ◉ button still switches any time.' : '<b>Auto view off.</b> The view only changes when you tap the ◉ button.', 3000);
+});
+$('btnView').addEventListener('click', e => { e.stopPropagation(); if (started) viewToggle(); });
+syncAutoView(); syncViewBtn();
+
+/* =====================================================================
    LIVING CITY 4/4 — HUD (call card, waypoint, map, level), city panel, per-frame glue
    ===================================================================== */
 const BQ = []; let bqT = 0;
@@ -6962,7 +7165,7 @@ function cityFrame(dt, t, rdt){
   skyStep(rdt); nightStep(rdt); detailStep(rdt); polishStep(rdt); flowStep(rdt);
   trRender(); pedRender(t);
   CITY.slowWant = 1;
-  combatStep(rdt); stage3Step(rdt);
+  combatStep(rdt); stage3Step(rdt); viewStep(rdt);
   if (CITY.on && started) {
     const pdt = CITY.paused ? 0 : dt;
     for (const m of CITY.missions) {
@@ -7029,6 +7232,7 @@ function frame(now){
   flushCells();
   if (REAL) { shadowTick = (shadowTick + 1) % (TOUCH || fps < 45 ? 2 : 1); if (shadowTick === 0) renderer.shadowMap.needsUpdate = true; }
   renderer.render(scene, camera);
+  renderHands();
 
   frames++; fpsT += Math.min(0.5, (now - (frame.prevNow || now)) / 1000); frame.prevNow = now; hudT += dt; // real time, so slow phones are seen as slow
   if (hudT > 0.1) { hudT = 0; vSpeed.textContent = Math.round(r.speed * 3.6); vAlt.textContent = Math.round(r.alt); updateHud(); }
@@ -7057,6 +7261,7 @@ requestAnimationFrame(frame);
    ===================================================================== */
 function startGame(gameMode){
   started = true;
+  if (VIEW) viewOnStart();
   $('start').hidden = true;
   document.body.classList.remove('pre');
   initAudio();
