@@ -493,6 +493,7 @@ html.js .nojs{display:none}
         <dt>FLY</dt><dd>Double-tap the stick to take off. Double-tap again to land.</dd>
         <dt>DASH</dt><dd>A short burst that smashes through things and dodges shots. Uses the orange meter.</dd>
         <dt>POWER</dt><dd>Big right button: tap to fire, hold to beam or spray, drag while holding to aim. The small buttons switch power.</dd>
+        <dt>PEOPLE</dt><dd>Walk up to anyone: fist bump, selfie, talk, or carry them. Thugs on the street? The action button becomes PUNCH; DASH when you see the red "!" to counter.</dd>
         <dt>VIEW</dt><dd>Land and you see through your own eyes; take off and the camera pulls back. The ◉ button (top left) switches any time.</dd>
         <dt>CALLS</dt><dd>Follow the orange marker. Finish calls for XP, upgrades and safer districts. Tap the map (top left) to see everything.</dd>
       </dl>
@@ -2286,6 +2287,7 @@ function update(dt, t){
     camera.rotation.z += Math.sin(t * 47) * 0.04 * sh;
   }
   viewCamera(dt); // first-person view (src/view.js)
+  peopleCamera(dt); // selfie camera (src/people.js)
   fovKick = Math.max(0, fovKick - dt * 18);
   const fovT = viewFov(CFG.fovBase, (CFG.fovBoost - CFG.fovBase) * boostT, fovKick);
   const nf = camera.fov + (fovT - camera.fov) * damp(6, dt);
@@ -2470,6 +2472,7 @@ function rayBuildings(o, d, maxT){
   return best;
 }
 const hitRes = { t: 0, ent: null, kind: '' };
+const _rwV = new THREE.Vector3();
 function rayWorld(o, d, maxT, skip){
   hitRes.t = maxT; hitRes.ent = null; hitRes.kind = ''; hitRes.cell = -1;
   const bt = rayBuildings(o, d, maxT); if (bt < hitRes.t) { hitRes.t = bt; hitRes.kind = 'building'; hitRes.cell = rayCell; }
@@ -2486,6 +2489,7 @@ function rayWorld(o, d, maxT, skip){
   if (MS.on || meteorsLive) for (const m of meteors) { if (!m.alive || m.held || m === skip) continue; const t = raySphere(o, d, m.pos, m.r * 1.3); if (t < hitRes.t) { hitRes.t = t; hitRes.ent = m; hitRes.kind = 'ent'; } }
   for (const e of MENTS) { if (!e.alive || e.held || e === skip || e.solid === false) continue; const t = raySphere(o, d, e.pos, e.r); if (t < hitRes.t) { hitRes.t = t; hitRes.ent = e; hitRes.kind = 'ent'; } }
   for (const c of TR) { if (!c.alive) continue; const t = raySphere(o, d, c.pos, 2.0); if (t < hitRes.t) { hitRes.t = t; hitRes.ent = c; hitRes.kind = 'ent'; } }
+  for (const e of PEDS) { if (!e.foe || !e.alive || e === skip || FALLEN[e.state]) continue; _rwV.set(e.pos.x, e.pos.y + 1.0, e.pos.z); const t = raySphere(o, d, _rwV, 0.65); if (t < hitRes.t) { hitRes.t = t; hitRes.ent = e; hitRes.kind = 'ent'; } }
   if (BR.on && rival.alive) { const t = raySphere(o, d, rival.pos, rival.r); if (t < hitRes.t) { hitRes.t = t; hitRes.ent = rival; hitRes.kind = 'ent'; } }
   return hitRes;
 }
@@ -2830,6 +2834,7 @@ function findAimTarget(range, accept, cone, sticky){
   for (const p of people) if (p.alive && LOCK_STATES[p.state] && !p.held && !p.noLock) consider(p, p.pos, 1.0);
   if (MS.on || meteorsLive) for (const m of meteors) if (m.alive && !m.held && !m.thrown) consider(m, m.pos, m.r);
   for (const e of MENTS) if (e.alive && !e.held && e.lockable !== false) consider(e, e.pos, e.r);
+  for (const e of PEDS) if (e.foe && e.alive && !FALLEN[e.state]) { pv2.set(e.pos.x, e.pos.y + 1.1, e.pos.z); consider(e, pv2, 0.6); } // street thugs (people.js)
   return best;
 }
 function lockValid(e, accept, range){
@@ -2881,7 +2886,7 @@ function aimAssistStep(dt){
   }
   aaPrev = aimTarget; aaYaw = ty; aaPitch = tp;
 }
-function aimCenter(e, out){ out.copy(e.pos); if (e.kind === 'fire') out.y += 0.8; return out; }
+function aimCenter(e, out){ out.copy(e.pos); if (e.kind === 'fire') out.y += 0.8; else if (e.foe) out.y += 1.1; return out; }
 
 /* ---------- power actions ---------- */
 function spend(n){ if (energyLock || energy <= 0) return false; energy -= n; lastSpend = nowT; if (energy <= 0) { energy = 0; energyLock = true; } return true; }
@@ -2896,12 +2901,14 @@ const POWER_ORDER = ['beam', 'water', 'grab'];
 function cyclePower(dir){ const i = POWER_ORDER.indexOf(power); selectPower(POWER_ORDER[(i + dir + 3) % 3], true); tone('sine', 700, 1000, 0.06, 0.06); buzz(8); }
 function refreshPowerLabel(){
   if (typeof COMBAT === 'object' && COMBAT.finishReady && !grabbed) { $('powerIcon').textContent = '✸'; $('powerLabel').textContent = 'FINISH'; return; }
+  if (MELEE_READY && !grabbed) { $('powerIcon').textContent = '👊'; $('powerLabel').textContent = 'PUNCH'; return; } // a thug in reach (people.js)
   const ui = grabbed ? (grabbed.kind === 'person' ? ['↓', 'DROP'] : ['↗', 'THROW']) : POWER_UI[power];
   $('powerIcon').textContent = ui[0]; $('powerLabel').textContent = ui[1];
 }
 function powerDown(){
   if (!started || powerHeld) return;
   if (COMBAT.finishReady && tryFinisher()) return; // FINISH prompt showing: this press is the finisher
+  if (meleeTry()) return; // a thug in reach: this press is a punch (people.js)
   powerHeld = true; powerDownT = nowT; lastPowerT = nowT;
   if (power === 'grab') grabPress();
 }
@@ -4572,76 +4579,7 @@ function trafficStep(dt){
 for (const p of POOL_CARS) p.onDestroy = e => { e.deadT = nowT; };
 
 /* ---------- people on the sidewalks ---------- */
-const PED_N = 64, PEDS = [];
-const pedBody = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.26, 0.22, 0.9, 8), toon(0xffffff), PED_N);
-const pedLegs = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.2, 0.14, 0.62, 6), toon(0x2b3352), PED_N);
-const pedHead = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.21, 0), toon(0xe8b48f), PED_N);
-const PED_COLS = [0xff5d73, 0x7d6bff, 0x2ec4a0, 0xffb547, 0x58c7f3, 0xf3f5fa, 0xe6463b, 0x9be37a];
-for (let i = 0; i < PED_N; i++) {
-  const p = { i, st: { road: null, dir: 1, s: 0 }, side: Math.random() < 0.5 ? -1 : 1, pos: new THREE.Vector3(), yaw: 0, speed: rnd(1.2, 1.8), state: 'walk', t: 0, from: new THREE.Vector3(), to: new THREE.Vector3(), seen: 0 };
-  p.st.pedOnly = true; rfRandom(p.st, r => r.ped); PEDS.push(p);
-  pedBody.setColorAt(i, _tc.set(PED_COLS[i % PED_COLS.length]));
-}
-for (const m of [pedBody, pedLegs, pedHead]) { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.frustumCulled = false; m.userData.noCast = true; scene.add(m); }
-function pedSnap(p){ rfNearest(p.pos.x, p.pos.z, p.st, r => r.ped); p.st.dir = Math.random() < 0.5 ? 1 : -1; p.state = 'walk'; }
-function scare(at, r){
-  for (const p of PEDS) {
-    if (p.state === 'gone' || p.state === 'evac') continue;
-    const d = Math.hypot(p.pos.x - at.x, p.pos.z - at.z);
-    if (d < r) { p.state = 'flee'; p.t = 0; p.from.copy(at); p.speed = rnd(5, 6.5); }
-  }
-  for (const c of TR) if (c.alive && c.pos.distanceTo(at) < r) { c.stopT = Math.max(c.stopT, rnd(2, 4)); if (Math.random() < 0.2) sHorn(); }
-}
-function cheer(at, r){ for (const p of PEDS) if ((p.state === 'walk' || p.state === 'idle') && p.pos.distanceTo(at) < r) { p.state = 'cheer'; p.t = 0; } }
-function pedStep(dt, t){
-  for (const p of PEDS) {
-    p.t += dt;
-    if (p.state === 'gone') continue;
-    if (p.state === 'walk') {
-      const near = Math.hypot(pos.x - p.pos.x, pos.z - p.pos.z);
-      if (near < 14 && vel.length() < 6 && mode === 'run' && p.seen <= 0) { p.state = 'look'; p.t = 0; p.seen = 20; }
-      p.seen -= dt;
-      rfAdvance(p.st, p.speed * dt);
-      p.yaw = rfPos(p.st, 7.4 * p.side, p.pos);
-      if (p.side < 0) p.yaw += 0; // both sides walk with the road direction
-    } else if (p.state === 'look') { // stop and stare at the hero
-      p.yaw = Math.atan2(pos.x - p.pos.x, pos.z - p.pos.z);
-      if (p.t > 2.2) p.state = 'walk';
-    } else if (p.state === 'flee' || p.state === 'evac') {
-      const tx = p.state === 'evac' ? p.to.x : p.pos.x + (p.pos.x - p.from.x), tz = p.state === 'evac' ? p.to.z : p.pos.z + (p.pos.z - p.from.z);
-      pv.set(tx - p.pos.x, 0, tz - p.pos.z); const L = pv.length();
-      if (L > 0.5) { pv.multiplyScalar(1 / L); p.pos.addScaledVector(pv, p.speed * dt); p.yaw = Math.atan2(pv.x, pv.z); }
-      for (const b of BUILD) { if (b.collapsed) continue; const n = solidAt(b, p.pos.x, 1, p.pos.z, 0.5, true); if (n) { p.pos.x += n.x * n.d; p.pos.z += n.z * n.d; } }
-      p.pos.y = platformY(p.pos.x, p.pos.z);
-      if (p.state === 'flee' && p.t > 4) pedSnap(p);
-      if (p.state === 'evac' && L < 2) { p.state = 'cheer'; p.t = 0; }
-    } else if (p.state === 'cheer') {
-      p.yaw = Math.atan2(pos.x - p.pos.x, pos.z - p.pos.z);
-      if (p.t > 3) { if (p.evac) { p.evac = false; pedSnap(p); } else p.state = 'walk'; }
-    } else if (p.state === 'idle') {
-      if (p.target) p.yaw = Math.atan2(p.target.x - p.pos.x, p.target.z - p.pos.z);
-    }
-  }
-}
-function pedRender(t){
-  for (const p of PEDS) {
-    if (p.state === 'gone' || !CITY.life) { pedBody.setMatrixAt(p.i, ZERO4); pedLegs.setMatrixAt(p.i, ZERO4); pedHead.setMatrixAt(p.i, ZERO4); continue; }
-    const moving = p.state === 'walk' || p.state === 'flee' || p.state === 'evac';
-    const bob = moving ? Math.abs(Math.sin(t * (p.state === 'walk' ? 7 : 14) + p.i)) * (p.state === 'walk' ? 0.08 : 0.2) : p.state === 'cheer' ? Math.abs(Math.sin(t * 9 + p.i)) * 0.5 : 0;
-    _tq.setFromAxisAngle(UP, p.yaw);
-    _tm.compose(_tv.set(p.pos.x, p.pos.y + 1.05 + bob, p.pos.z), _tq, _ts);
-    pedBody.setMatrixAt(p.i, _tm2.makeTranslation(0, -0.05, 0).premultiply(_tm));
-    pedLegs.setMatrixAt(p.i, _tm2.makeTranslation(0, -0.76, 0).premultiply(_tm));
-    pedHead.setMatrixAt(p.i, _tm2.makeTranslation(0, 0.6, 0).premultiply(_tm));
-  }
-  pedBody.instanceMatrix.needsUpdate = pedLegs.instanceMatrix.needsUpdate = pedHead.instanceMatrix.needsUpdate = true;
-}
-function pedEvac(from, to){ // borrow a walker for an evacuation run
-  let p = PEDS.find(x => x.state === 'walk' && x.pos.distanceTo(pos) > 60) || PEDS.find(x => x.state === 'walk');
-  if (!p) return null;
-  p.pos.copy(from); p.to.copy(to); p.state = 'evac'; p.evac = true; p.t = 0; p.speed = rnd(5, 6.5);
-  return p;
-}
+/* people on the streets: see people.js */
 
 /* ---------- mission people / drones (pooled, hidden until a mission needs them) ---------- */
 const POOL_PEOPLE = [];
@@ -4808,6 +4746,770 @@ function ambientStep(dt, t){
     CRANE.hook.position.set(hx, CRANE.hookY - 0.5, hz);
   }
   for (const a of AMBS) if (a.inUse) { const f = Math.sin(t * 14) > 0; a.l1.material.opacity = f ? 1 : 0.15; a.l2.material.opacity = f ? 0.15 : 1; a.l1.scale.setScalar(2.4); a.l2.scale.setScalar(2.4); }
+}
+
+/* =====================================================================
+   PEOPLE — bodies, daily life, feelings, memories, and you can really interact with them
+   - Every person has a name, a job (by district), a look, and a personality (friendly / brave / curious).
+   - Daily life: they walk the sidewalks, stop to chat in pairs, take phone calls, sit on benches.
+   - They notice you: wave, stare, ask for a selfie, film you with their phone, cheer, flee or cower.
+   - Walk up to someone (on foot): a card shows their name and lets you FIST BUMP, take a SELFIE, TALK or CARRY them.
+     They remember you: fans wave when you pass, people you knocked over stay grumpy.
+   - Street crime happens by itself: muggers, gangs bothering someone. Hand-to-hand fighting:
+     the action button becomes PUNCH near a thug (it lunges you in), thugs attack one at a time after a "!",
+     DASH during the "!" is a COUNTER, the third punch in a row sends them flying. No blood: knocked out, then taken away.
+   ===================================================================== */
+var BENCHES = [];          // filled by detail.js
+var MELEE_READY = false;   // the action button shows PUNCH
+var PSEL = null;           // selfie camera state (read by view.js)
+const PED_N = 72, PEDS = [];
+const PNAMES = ['Maria', 'Ahmed', 'Sven', 'Yuki', 'Lucas', 'Fatima', 'Noah', 'Emma', 'Daan', 'Sofia', 'Omar', 'Lina', 'Jayden', 'Mila', 'Chen', 'Priya', 'Tom', 'Sara', 'Kofi', 'Elif',
+  'Mateo', 'Zoë', 'Ravi', 'Anna', 'Finn', 'Nora', 'Leo', 'Julia', 'Ivan', 'Aisha', 'Sam', 'Eva', 'Bram', 'Sanne', 'Joris', 'Fleur', 'Lotte', 'Milan', 'Hugo', 'Amira', 'Kenji', 'Grace'];
+const SKINS = [0xf6d7bd, 0xeac09b, 0xd3a07a, 0xb07a52, 0x8a5a3a, 0x5e3b25];
+const HAIRS = [0x1b1511, 0x3a2a1d, 0x6b4a2b, 0xc9a266, 0x9a9a9a, 0x2c201b, 0xa8452a, 0xe2d2b0];
+const ARCH = {
+  office:  { label: 'Office worker', shirts: [0x2c3e66, 0x5b6b82, 0xe9edf3, 0x3a4a5e, 0x7a2e3a], pants: [0x1d2433, 0x2b2f3a, 0x3b3f4a], speed: [1.3, 1.7] },
+  tourist: { label: 'Tourist', shirts: [0xff5d73, 0xffb547, 0x58c7f3, 0x9be37a, 0xffffff], pants: [0xd9c6a0, 0x3f5c8a, 0x6e7b52], speed: [1.0, 1.4] },
+  docker:  { label: 'Dock worker', shirts: [0xff8a1f, 0xffd447], pants: [0x2b3352, 0x3a3f4a], hat: 0xffc21a, speed: [1.3, 1.7] },
+  worker:  { label: 'Factory worker', shirts: [0x3a6fb0, 0x4b5563, 0x2f5d8a], pants: [0x2a4a7a, 0x333a44], hat: 0xffffff, speed: [1.3, 1.7] },
+  local:   { label: 'Local', shirts: [0xb8d8e8, 0xf4c6d0, 0xd8e8b8, 0xe8d8b8, 0x8f7fbf, 0x6fbf9f], pants: [0x3f5c8a, 0x5a4a3a, 0x2b3352], speed: [1.1, 1.6] },
+  jogger:  { label: 'Jogger', shirts: [0xff3e6c, 0x00d1b2, 0xffe14d, 0x7b61ff], pants: [0x1d1d24, 0x24242c], speed: [3.2, 4.0], jog: true },
+  student: { label: 'Student', shirts: [0x7d6bff, 0x2ec4a0, 0xe6463b, 0x58c7f3, 0x262a35], pants: [0x3f5c8a, 0x1d2433], speed: [1.4, 1.9] },
+  thug:    { label: 'Thug', shirts: [0x24242c, 0x3a1f2a, 0x2b2f24], pants: [0x15151a], hat: 0xc0182a, speed: [1.4, 1.8] }
+};
+const DIST_ARCH = [['office', 'office', 'tourist', 'student', 'local'], ['docker', 'docker', 'local', 'tourist'], ['worker', 'worker', 'local', 'student'], ['local', 'local', 'student', 'jogger'], ['jogger', 'jogger', 'local', 'tourist', 'student']];
+const L = {
+  fist: ['Yes! I fist-bumped Skyguard!', 'Best day ever!', "My kids won't believe this!", 'Respect! 👊', 'Ow, strong hand!', 'Haha, nice one!'],
+  selfie: ['Posting this right now!', 'Say cheese! 📸', 'My followers will go crazy!', 'Framing this one!'],
+  refuse: ["Not now, I'm busy.", 'Leave me alone, please.', "I don't trust heroes.", 'No photos, thanks.'],
+  angry: ['Hey! Watch it!', 'You knocked me over!', 'Seriously?!', "I'm telling the city council!"],
+  grumpy: ['You knocked me over earlier, you know.', 'Watch where you fly next time.', 'Hmph.'],
+  greet: ['Hi Skyguard! 👋', "Look, it's Skyguard!", "Go get 'em!", 'Love your cape!'],
+  ask: ['Skyguard!! Selfie? 📸', "OMG it's you! Selfie, please?", 'Quick photo? Pleeease?'],
+  askSad: ['Aww...', 'Maybe next time...', 'So close!'],
+  carryBrave: ['Wheeee!', 'Higher! HIGHER!', 'This is amazing!'],
+  carryTimid: ["Aaah! Don't drop me!", "I'm scared of heights!", 'Put me down, please!'],
+  dropHappy: ['That was AMAZING!', 'Again! Again!', 'Best ride ever!'],
+  dropDizzy: ['Never... again...', "I'll walk from now on.", 'My legs are jelly.'],
+  dropFall: ['Seriously?!', 'OW! Not cool!', 'You DROPPED me?!'],
+  thank: ['Thank you, Skyguard!', 'You saved me!', 'My hero! ❤️', 'I owe you one!'],
+  help: ['HELP!', 'Somebody help!', 'Leave me alone!'],
+  thief: ['MY BAG! THIEF!', 'Stop him! He took my bag!'],
+  chat: ['😂', '🙂', '…', '🤔', '😮', '❤️', '👍', '🙄'],
+  phone: ["Yeah... I'm downtown.", 'Did you see Skyguard today?', "I'll call you back!", 'Mm-hm. Mm-hm.'],
+  taunt: ["Look who's here!", 'Get him!', 'Wrong street, hero!', 'Not so tough up close!'],
+  ko: ['Ugh...', 'Okay, okay, I give up!', '💫'],
+  flyby: ['Whoa!', 'Did you see that?!', 'So fast!'],
+  cheer: ['YEAH!', 'Skyguard!!', 'Woo!'],
+  fan: ["Hey, it's you again! 👋", 'My favourite hero!', 'Still have our selfie!'],
+  trustHi: ['The whole city loves you!', 'My kids dress up as you.'],
+  trustLo: ['People say you break more than you fix...', 'Careful with the buildings, okay?'],
+  night: ['Nice night for a flight, huh?', 'I feel safer at night with you around.'],
+  office: ["Another meeting... I'd rather fly like you.", 'Downtown never sleeps.', 'My boss thinks you\'re a myth.'],
+  tourist: ['We came all this way to see you!', 'Which way to the harbor?', 'This city is amazing!'],
+  docker: ['Ships in, ships out.', 'Watch out for the cranes, hero.', "The harbor's rough at night."],
+  worker: ["Factory's loud today.", 'Hard work, honest pay.', 'Seen those drones over the factories?'],
+  local: ["I've lived here 30 years.", 'Our street feels safer with you around.', 'Try the bakery on the corner!'],
+  jogger: ["Can't stop, 10K today!", 'Race you? Never mind.', 'Good for the heart, this city.'],
+  student: ["I'm writing an essay about you!", 'Can you do my homework? Joking!', 'Is it true you can\'t swim?']
+};
+const pick = a => a[Math.floor(Math.random() * a.length)];
+
+/* ---------- bodies: one instanced mesh per body part (8 draw calls for everyone) ---------- */
+const PG = {
+  torso: new THREE.CylinderGeometry(0.24, 0.2, 0.64, 8), head: new THREE.SphereGeometry(0.18, 10, 8),
+  hair: new THREE.SphereGeometry(0.195, 10, 6, 0, TAU, 0, Math.PI * 0.5),
+  arm: new THREE.CylinderGeometry(0.07, 0.058, 0.66, 6).translate(0, -0.33, 0), leg: new THREE.CylinderGeometry(0.105, 0.08, 0.84, 6).translate(0, -0.42, 0),
+  phone: new THREE.BoxGeometry(0.075, 0.14, 0.025), bag: new THREE.BoxGeometry(0.3, 0.24, 0.12)
+};
+function pInst(geo, col){ const m = new THREE.InstancedMesh(geo, toon(col), PED_N); m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.frustumCulled = false; m.userData.noCast = true; scene.add(m); return m; }
+const faceTex = (() => { // eyes, brows and a smile at the front of the head sphere (u = 0.25 faces forward)
+  const c = document.createElement('canvas'); c.width = 128; c.height = 64; const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, 128, 64); x.fillStyle = '#1a1410';
+  for (const ex of [26, 38]) { x.beginPath(); x.ellipse(ex, 29, 2.1, 3, 0, 0, TAU); x.fill(); x.fillRect(ex - 3, 22.5, 6, 1.4); }
+  x.strokeStyle = '#7a3b2e'; x.lineWidth = 1.6; x.beginPath(); x.arc(32, 35, 4.5, 0.25 * Math.PI, 0.75 * Math.PI); x.stroke();
+  x.fillStyle = 'rgba(255,120,120,0.25)'; for (const ex of [22, 42]) { x.beginPath(); x.arc(ex, 35, 2.6, 0, TAU); x.fill(); }
+  const t = new THREE.CanvasTexture(c); t.anisotropy = 2; return t;
+})();
+function pInstMat(geo, mat){ const m = new THREE.InstancedMesh(geo, mat, PED_N); m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.frustumCulled = false; m.userData.noCast = true; scene.add(m); return m; }
+const PM = { torso: pInst(PG.torso, 0xffffff), head: pInstMat(new THREE.SphereGeometry(0.18, 16, 10), toon(0xffffff, { map: faceTex })), hair: pInst(PG.hair, 0xffffff), armL: pInst(PG.arm, 0xffffff), armR: pInst(PG.arm, 0xffffff),
+  legL: pInst(PG.leg, 0xffffff), legR: pInst(PG.leg, 0xffffff), phone: pInst(PG.phone, 0x16181d), bag: pInst(PG.bag, 0x7a4a2a) };
+const _pc = new THREE.Color(), _pe = new THREE.Euler(), _pq = new THREE.Quaternion(), _ps = new THREE.Vector3(), _pp = new THREE.Vector3(), _pv = new THREE.Vector3(), _pv2 = new THREE.Vector3();
+const _pm = new THREE.Matrix4(), _pR = new THREE.Matrix4(), _pA = new THREE.Matrix4(), _pO = new THREE.Matrix4(), _pS = new THREE.Matrix4();
+
+function dressPed(p, archKey){
+  const A = ARCH[archKey]; p.arch = archKey;
+  p.cShirt = pick(A.shirts); p.cPants = pick(A.pants); p.cSkin = pick(SKINS); p.cHair = A.hat !== undefined ? A.hat : pick(HAIRS); p.hatK = A.hat !== undefined ? 1.12 : 1;
+  p.cSleeve = Math.random() < 0.45 ? p.cSkin : p.cShirt; if (archKey === 'thug') p.cSleeve = p.cShirt;
+  p.scale = rnd(0.9, 1.06); p.speed0 = rnd(A.speed[0], A.speed[1]); p.speed = p.speed0; p.jog = !!A.jog;
+  p.name = pick(PNAMES); p.pers = { friendly: Math.random(), brave: Math.random(), curious: Math.random() };
+  p.fan = 0; p.met = 0; p.angry = 0; p.lastMet = -99; p.askedT = -99; p.greetT = -99; p.chatCD = rnd(5, 30);
+  p.foe = false; p.alive = true; p.kind = 'ped'; p.thugRole = null; p.crime = null; p.hasBag = false;
+  PM.torso.setColorAt(p.i, _pc.set(p.cShirt)); PM.legL.setColorAt(p.i, _pc.set(p.cPants)); PM.legR.setColorAt(p.i, _pc.set(p.cPants));
+  PM.armL.setColorAt(p.i, _pc.set(p.cSleeve)); PM.armR.setColorAt(p.i, _pc.set(p.cSleeve)); PM.head.setColorAt(p.i, _pc.set(p.cSkin)); PM.hair.setColorAt(p.i, _pc.set(p.cHair));
+  for (const k of ['torso', 'legL', 'legR', 'armL', 'armR', 'head', 'hair']) PM[k].instanceColor.needsUpdate = true;
+}
+for (let i = 0; i < PED_N; i++) {
+  const p = { i, st: { road: null, dir: 1, s: 0, pedOnly: true }, side: Math.random() < 0.5 ? -1 : 1, pos: new THREE.Vector3(), yaw: 0, speed: 1.5, state: 'walk', t: 0, dur: 0,
+    from: new THREE.Vector3(), to: new THREE.Vector3(), v: new THREE.Vector3(), seen: 0, ph: Math.random() * TAU, idleT: rnd(3, 14), lie: 0, rx: 0, rz: 0, wx: 0, wz: 0,
+    j: { aLx: 0, aLz: 0.1, aRx: 0, aRz: -0.1, lL: 0, lR: 0, lean: 0, lift: 0, headP: 0, phone: 0 }, hp: 100, hpMax: 100, partner: null, bench: null, slot: 0, cd: 0, r: 0.6 };
+  rfRandom(p.st, r => r.ped); p.yaw = rfPos(p.st, 7.4 * p.side, p.pos);
+  PEDS.push(p); dressPed(p, pick(DIST_ARCH[districtAt(p.pos.x, p.pos.z)]));
+}
+function pedSnap(p){ rfNearest(p.pos.x, p.pos.z, p.st, r => r.ped); p.st.dir = Math.random() < 0.5 ? 1 : -1; p.state = 'walk'; p.lie = 0; p.partner = null; p.speed = p.speed0; }
+const CIVIL_FREE = { walk: 1, look: 1, wave: 1, chat: 1, phone: 1, sit: 1, film: 1, cheer: 1, ask: 1, thank: 1, idleTalk: 1 };
+const FALLEN = { tumble: 1, down: 1, getup: 1, ko: 1, gone: 1 };
+
+/* ---------- speech bubbles ---------- */
+(() => {
+  const css = document.createElement('style');
+  css.textContent = `
+.pbub{position:fixed;left:0;top:0;z-index:4;pointer-events:none;max-width:170px;padding:6px 9px;border-radius:10px;background:#fff;color:#0b1530;font:600 12px/1.25 var(--hud),sans-serif;
+  box-shadow:0 2px 8px rgba(0,0,0,.25);transform:translate(-50%,-100%);opacity:0;transition:opacity .15s;white-space:normal;text-align:center}
+.pbub:after{content:'';position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-top-color:#fff;border-bottom:0}
+.pbub.loud{background:#ff4b3e;color:#fff;font-weight:800;letter-spacing:.04em}.pbub.loud:after{border-top-color:#ff4b3e}
+.pbub.emo{font-size:18px;padding:3px 7px}
+#ptag{position:fixed;left:0;top:0;z-index:4;pointer-events:none;transform:translate(-50%,-100%);font:700 11px/1 var(--hud),sans-serif;letter-spacing:.1em;color:#fff;
+  background:rgba(11,21,48,.78);border:1px solid var(--energy,#4ff);border-radius:8px;padding:4px 7px;white-space:nowrap;display:none}
+#pcard{position:fixed;z-index:7;left:50%;bottom:calc(10px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:none;background:rgba(11,21,48,.86);border:1px solid rgba(150,205,255,.35);
+  border-radius:14px;padding:7px 8px 8px;color:#eef5ff;font:600 11px/1.2 var(--hud),sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.35)}
+#pcard .pcn{display:flex;gap:6px;align-items:baseline;justify-content:center;margin:0 0 6px;letter-spacing:.06em}#pcard .pcn b{font-size:13px;letter-spacing:.1em}#pcard .pcn i{font-style:normal;color:#9fb3d9}
+#pcard .pcb{display:flex;gap:6px}
+#pcard button{min-width:58px;height:50px;border-radius:10px;border:1px solid rgba(150,205,255,.35);background:rgba(22,38,80,.9);color:#eef5ff;font:700 9px/1.1 var(--hud),sans-serif;letter-spacing:.08em;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;touch-action:manipulation}
+#pcard button span{font-size:19px;line-height:1}#pcard button.hot{border-color:#ffd447;box-shadow:0 0 0 2px rgba(255,212,71,.5)}
+#pcard button:active{transform:scale(.95)}
+#ppolar{position:fixed;z-index:8;right:calc(18px + env(safe-area-inset-right,0px));top:70px;width:170px;background:#fff;padding:7px 7px 22px;border-radius:4px;box-shadow:0 6px 20px rgba(0,0,0,.4);
+  transform:rotate(4deg) translateX(240px);transition:transform .35s cubic-bezier(.2,1.4,.4,1);pointer-events:none}
+#ppolar.on{transform:rotate(4deg) translateX(0)}#ppolar img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;background:#ccc}
+#ppolar p{margin:5px 0 0;color:#0b1530;font:700 11px/1 var(--hud),sans-serif;text-align:center;letter-spacing:.05em}
+#pcrime{position:fixed;left:0;top:0;z-index:4;pointer-events:none;display:none;transform:translate(-50%,-50%);background:#ff4b3e;color:#fff;font:800 11px/1 var(--hud),sans-serif;letter-spacing:.08em;
+  padding:5px 8px;border-radius:8px;box-shadow:0 2px 10px rgba(255,75,62,.5);white-space:nowrap}`;
+  document.head.appendChild(css);
+})();
+const BUBS = [];
+for (let i = 0; i < 8; i++) { const el = document.createElement('div'); el.className = 'pbub'; document.body.appendChild(el); BUBS.push({ el, p: null, t: 0, loud: false }); }
+function say(p, text, dur, loud){
+  let b = BUBS.find(x => x.p === p) || BUBS.find(x => x.t <= 0) || BUBS.reduce((a, x) => x.t < a.t ? x : a);
+  b.p = p; b.t = dur || 2.8; b.loud = !!loud; b.el.textContent = text; p.lastLine = text;
+  b.el.className = 'pbub' + (loud ? ' loud' : '') + (/^\p{Extended_Pictographic}$|^…$/u.test(text) ? ' emo' : '');
+  return b;
+}
+const _bv = new THREE.Vector3();
+function bubStep(dt){
+  const W = innerWidth, H = innerHeight;
+  for (const b of BUBS) {
+    if (b.t <= 0 || !b.p) { if (b.el.style.opacity !== '0') b.el.style.opacity = '0'; continue; }
+    b.t -= dt;
+    const p = b.p; _bv.set(p.pos.x, p.pos.y + 2.05 * p.scale + (p.lie > 0.5 ? -1.4 : 0), p.pos.z);
+    const d = _bv.distanceTo(camera.position);
+    if (b.t <= 0 || p.state === 'gone' || d > (b.loud ? 160 : 45)) { b.el.style.opacity = '0'; if (b.t <= 0) b.p = null; continue; }
+    _bv.project(camera);
+    if (_bv.z > 1 || Math.abs(_bv.x) > 1.05 || Math.abs(_bv.y) > 1.05) { b.el.style.opacity = '0'; continue; }
+    b.el.style.transform = 'translate(' + ((_bv.x * 0.5 + 0.5) * W).toFixed(0) + 'px,' + ((-_bv.y * 0.5 + 0.5) * H).toFixed(0) + 'px) translate(-50%,-100%)';
+    b.el.style.opacity = String(clamp(b.t * 3, 0, 1));
+  }
+}
+
+/* ---------- moving about ---------- */
+function turnTo(a, b, k){ return a + angDiff(b, a) * Math.min(1, k); }
+function pushOut(p){ for (const b of BUILD) { if (b.collapsed) continue; const n = solidAt(b, p.pos.x, 1, p.pos.z, 0.45, true); if (n) { p.pos.x += n.x * n.d; p.pos.z += n.z * n.d; } } }
+function walkTo(p, x, z, sp, dt){
+  _pv.set(x - p.pos.x, 0, z - p.pos.z); const D = _pv.length();
+  if (D > 0.05) { const step = Math.min(D, sp * dt); _pv.multiplyScalar(1 / D); p.pos.addScaledVector(_pv, step); p.yaw = turnTo(p.yaw, Math.atan2(_pv.x, _pv.z), dt * 10); p.ph += dt * sp * 3.3; }
+  pushOut(p); p.pos.y = platformY(p.pos.x, p.pos.z);
+  return D;
+}
+function faceTo(p, x, z, dt){ p.yaw = turnTo(p.yaw, Math.atan2(x - p.pos.x, z - p.pos.z), dt * 8); }
+function backToStreet(p){
+  const st = p.st; rfNearest(p.pos.x, p.pos.z, st, r => r.ped); st.dir = Math.random() < 0.5 ? 1 : -1;
+  rfPos(st, 7.4 * p.side, p.to); p.state = 'return'; p.t = 0; p.lie = 0; p.partner = null; p.speed = p.speed0;
+}
+function setState(p, s, dur){ p.state = s; p.t = 0; p.dur = dur || 0; }
+function heroDist(p){ return Math.hypot(pos.x - p.pos.x, pos.z - p.pos.z); }
+function heroOnFoot(){ return started && mode === 'run'; }
+function tumble(p, dirX, dirZ, force, up){
+  if (p === CARRY.p) CARRY.p = null;
+  p.v.set(dirX * force, up !== undefined ? up : 3 + force * 0.35, dirZ * force);
+  p.wx = rnd(-8, 8) - force * 0.6; p.wz = rnd(-6, 6); p.rx = 0; p.rz = 0; p.partner = null;
+  if (p.bench) { p.bench.used = null; p.bench = null; }
+  setState(p, 'tumble'); p.lie = 0;
+}
+
+/* ---------- reactions: the world tells people what happened ---------- */
+function scare(at, r){
+  for (const p of PEDS) {
+    if (p.foe || FALLEN[p.state] || p.state === 'evac' || p.state === 'carried' || p === INTER.busyP) continue;
+    const d = Math.hypot(p.pos.x - at.x, p.pos.z - at.z);
+    if (d >= r) continue;
+    if (p.bench) { p.bench.used = null; p.bench = null; }
+    if (p.pers.brave > 0.68 && p.pers.curious > 0.45 && d > 9) { setState(p, 'film', rnd(5, 8)); p.from.copy(at); }
+    else if (p.pers.brave < 0.28 && d < r * 0.6) { setState(p, 'cower', rnd(1.6, 2.8)); p.from.copy(at); if (Math.random() < 0.3) say(p, pick(L.help), 1.8); }
+    else { setState(p, 'flee', rnd(3.5, 5)); p.from.copy(at); p.speed = rnd(5, 6.5); }
+  }
+  for (const c of TR) if (c.alive && c.pos.distanceTo(at) < r) { c.stopT = Math.max(c.stopT, rnd(2, 4)); if (Math.random() < 0.2) sHorn(); }
+}
+function cheer(at, r){
+  let said = 0;
+  for (const p of PEDS) if (!p.foe && (CIVIL_FREE[p.state] || p.state === 'idle') && p.state !== 'ask' && p.pos.distanceTo(at) < r) {
+    if (p.bench) { p.bench.used = null; p.bench = null; }
+    setState(p, 'cheer', rnd(2.5, 3.5)); if (said < 2 && Math.random() < 0.25) { said++; say(p, pick(L.cheer), 1.8); }
+  }
+}
+/* a landing, crash or blast right next to people knocks them over; further out they react */
+function peopleShock(at, s){
+  const r0 = 3 + 2.2 * s;
+  for (const p of PEDS) {
+    if (FALLEN[p.state] || p.state === 'carried' || p.state === 'evac') continue;
+    const dx = p.pos.x - at.x, dz = p.pos.z - at.z, d = Math.hypot(dx, dz);
+    if (d < r0 && Math.abs(p.pos.y - (at.y - FEET)) < 3) {
+      const k = (1 - d / r0) * 7 * s + 2; tumble(p, dx / (d || 1), dz / (d || 1), k);
+      if (!p.foe && Math.random() < 0.5) { p.angry = 1; setTimeout(() => say(p, pick(L.angry), 2.2), 900); }
+      if (p.foe) damage(p, 20 * s, _pv2.copy(p.pos).add(UP), _pv.set(dx / (d || 1), 0.3, dz / (d || 1)), 'big');
+    }
+  }
+  scare(at, 12 + 10 * s);
+}
+
+/* ---------- interaction with the hero ---------- */
+const INTER = { focus: null, shown: null, busyT: 0, busyP: null, asker: null, lastFocusT: -9 };
+const CARRY = { p: null, screamT: 0 };
+PSEL = { on: false, p: null, t: 0, capture: false, cam: new THREE.Vector3(), look: new THREE.Vector3() };
+const card = document.createElement('div'); card.id = 'pcard';
+card.innerHTML = '<div class="pcn"><b></b><span></span><i></i></div><div class="pcb">' +
+  '<button data-a="bump"><span>👊</span>FIST BUMP</button><button data-a="selfie"><span>📸</span>SELFIE</button><button data-a="talk"><span>💬</span>TALK</button><button data-a="carry"><span>🦸</span>CARRY</button>' +
+  '<button data-a="drop"><span>⬇</span>PUT DOWN</button></div>';
+document.body.appendChild(card);
+const tag = document.createElement('div'); tag.id = 'ptag'; document.body.appendChild(tag);
+const polar = document.createElement('div'); polar.id = 'ppolar'; polar.innerHTML = '<img alt="Selfie"><p></p>'; document.body.appendChild(polar);
+const crimeEl = document.createElement('div'); crimeEl.id = 'pcrime'; document.body.appendChild(crimeEl);
+for (const ev of ['pointerdown', 'touchstart', 'mousedown']) card.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+card.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; e.stopPropagation(); interact(INTER.shown, b.dataset.a); });
+function moodOf(p){ return p.angry > 0 ? '😠' : p.fan >= 2 ? '🤩' : p.fan === 1 ? '😊' : p.pers.brave < 0.3 ? '😟' : '🙂'; }
+function showCard(p){
+  INTER.shown = p;
+  if (!p) { card.style.display = 'none'; tag.style.display = 'none'; return; }
+  const carrying = CARRY.p === p;
+  card.querySelector('.pcn b').textContent = p.name.toUpperCase();
+  card.querySelector('.pcn span').textContent = moodOf(p);
+  card.querySelector('.pcn i').textContent = ARCH[p.arch].label + (p.fan ? ' · ' + '★★★'.slice(0, p.fan) : '');
+  for (const b of card.querySelectorAll('button')) { const a = b.dataset.a; b.style.display = carrying ? (a === 'drop' ? '' : 'none') : (a === 'drop' ? 'none' : ''); b.classList.toggle('hot', p.state === 'ask' && a === 'selfie'); }
+  card.style.display = 'block'; tag.textContent = '◆ ' + p.name.toUpperCase(); tag.style.display = 'block';
+}
+function fanUp(p, n){
+  const was = p.fan; p.fan = Math.min(3, p.fan + (n || 1));
+  if (was === 0 && p.fan > 0) { CITY.fans = (CITY.fans || 0) + 1; popNum('+1 FAN', _pv2.copy(p.pos).add(UP).add(UP), 'good'); CITY.trust = clamp(CITY.trust + 0.5, 0, 100); saveT = Math.max(saveT, 0.01); }
+}
+function heroFace(x, z, y){ shotDir.set(x - pos.x, (y || pos.y) - pos.y, z - pos.z).normalize(); castT = nowT; }
+function interact(p, a){
+  if (!p || !started) return;
+  if (a === 'drop') { carryDrop(); return; }
+  if (INTER.busyT > 0) return;
+  if (a !== 'carry' && (p.angry > 0 || (p.pers.friendly < 0.12 && p.met === 0)) && Math.random() < 0.7) { // not everyone wants to
+    say(p, pick(p.angry > 0 ? L.grumpy : L.refuse), 2.4); setState(p, 'look', 2); p.met++; INTER.busyT = 0.8; tone('sine', 300, 240, 0.12, 0.05); return;
+  }
+  p.met++; p.lastMet = nowT; p.partner = null; if (p.bench) { p.bench.used = null; p.bench = null; }
+  if (INTER.asker === p) INTER.asker = null;
+  if (a === 'bump') { setState(p, 'fistbump', 1.3); INTER.busyT = 1.3; INTER.busyP = p; p.bumped = false; }
+  else if (a === 'talk') { setState(p, 'talk', 4.2); INTER.busyT = 1.0; INTER.busyP = p; say(p, talkLine(p), 4.4); fanUp(p, p.fan ? 0 : 1); tone('sine', 660, 880, 0.08, 0.04); }
+  else if (a === 'selfie') { startSelfie(p); }
+  else if (a === 'carry') { carryStart(p); }
+  showCard(null);
+}
+function dirWord(x, z){
+  const fx = Math.sin(camYaw), fz = Math.cos(camYaw), dx = x - pos.x, dz = z - pos.z, d = Math.hypot(dx, dz) || 1;
+  const c = (dx * fx + dz * fz) / d, s = (dx * -fz + dz * fx) / d; // s > 0 = to the left
+  const w = c > 0.7 ? 'ahead of you' : c < -0.6 ? 'behind you' : s > 0 ? 'to your left' : 'to your right';
+  return w + ', about ' + Math.round(d / 10) * 10 + ' m';
+}
+function talkLine(p){
+  if (p.angry > 0) return pick(L.grumpy);
+  if (p.met > 1 && p.fan > 0 && Math.random() < 0.5) return pick(L.fan);
+  if (STREET.crime && !STREET.crime.done) { const c = STREET.crime.at; return 'Hurry! Someone needs help ' + dirWord(c.x, c.z) + '!'; }
+  if (Math.random() < 0.35 && canCrime()) { const c = startCrime('gang', true); if (c) return 'Some thugs are bothering people ' + dirWord(c.at.x, c.at.z) + '. Can you help?'; }
+  const r = Math.random();
+  if (r < 0.2) return pick(CITY.trust >= 70 ? L.trustHi : CITY.trust < 35 ? L.trustLo : L[p.arch] || L.local);
+  if (r < 0.32 && SKY.night > 0.5) return pick(L.night);
+  return pick(L[p.arch] || L.local);
+}
+/* selfie: a camera in front of you both, a flash, a polaroid */
+function startSelfie(p){
+  PSEL.on = true; PSEL.p = p; PSEL.t = 0; PSEL.capture = false; INTER.busyT = 2.4; INTER.busyP = p;
+  const R = _pv.set(-Math.cos(camYaw), 0, Math.sin(camYaw));
+  p.pos.set(pos.x + R.x * 0.8 - Math.sin(camYaw) * 0.15, platformY(pos.x + R.x * 0.8, pos.z + R.z * 0.8), pos.z + R.z * 0.8 - Math.cos(camYaw) * 0.15);
+  PSEL.yaw = camYaw; selfieCam(); setState(p, 'selfie', 2.4);
+}
+function selfieCam(){
+  const p = PSEL.p, F = _pv.set(Math.sin(PSEL.yaw), 0, Math.cos(PSEL.yaw));
+  PSEL.look.set((pos.x + p.pos.x) / 2, pos.y + 0.55, (pos.z + p.pos.z) / 2);
+  PSEL.cam.copy(PSEL.look).addScaledVector(F, 2.3); PSEL.cam.y += 0.35;
+}
+function peopleCamera(dt){
+  if (!PSEL.on) return;
+  PSEL.t += dt;
+  const p = PSEL.p; selfieCam();
+  camera.position.copy(PSEL.cam); camera.lookAt(PSEL.look); camera.updateMatrixWorld();
+  hero.visible = true; trail.visible = false;
+  p.yaw = Math.atan2(PSEL.cam.x - p.pos.x, PSEL.cam.z - p.pos.z);
+  if (!PSEL.capture && PSEL.t > 1.15) { PSEL.capture = true; PSEL.shoot = true; }
+  if (PSEL.t > 2.2) { PSEL.on = false; fanUp(p); say(p, pick(L.selfie), 2.6); CITY.selfies = (CITY.selfies || 0) + 1; flowAdd(5, 'SELFIE', 4); }
+}
+function peopleAfterRender(){
+  if (!PSEL.shoot) return;
+  PSEL.shoot = false;
+  try {
+    const c = document.createElement('canvas'); c.width = 320; c.height = 180; const x = c.getContext('2d'), src = renderer.domElement;
+    const sw = src.width, sh = src.height, cw = Math.min(sw, sh * 16 / 9), ch = cw * 9 / 16;
+    x.drawImage(src, (sw - cw) / 2, (sh - ch) / 2, cw, ch, 0, 0, 320, 180);
+    polar.querySelector('img').src = c.toDataURL('image/jpeg', 0.82);
+  } catch (e) {}
+  polar.querySelector('p').textContent = 'ME & ' + PSEL.p.name.toUpperCase() + ' 📸';
+  polar.classList.add('on'); clearTimeout(polar._t); polar._t = setTimeout(() => polar.classList.remove('on'), 3400);
+  impactFrame(0.9); noiseBurst('highpass', 3000, 6000, 0.08, 0.12); tone('square', 1800, 1200, 0.04, 0.05); buzz(15);
+}
+function carryStart(p){ CARRY.p = p; CARRY.screamT = 0.5; setState(p, 'carried'); INTER.busyT = 0.6; say(p, p.pers.brave > 0.5 ? 'Really?! Okay!' : 'W-wait... what?!', 2); tone('sine', 500, 750, 0.1, 0.05); }
+function carryDrop(){
+  const p = CARRY.p; if (!p) return; CARRY.p = null;
+  const alt = pos.y - FEET - surfaceUnder(pos.x, pos.z, pos.y);
+  const fx = Math.sin(heading), fz = Math.cos(heading);
+  p.pos.set(pos.x + fx * 0.9, 0, pos.z + fz * 0.9); pushOut(p);
+  if (alt > 2.5) { p.pos.y = pos.y - 0.6; tumble(p, fx, fz, 1.5, 0); p.angry = 1; p.dropFall = true; return; }
+  p.pos.y = platformY(p.pos.x, p.pos.z); p.yaw = Math.atan2(pos.x - p.pos.x, pos.z - p.pos.z);
+  const happy = p.pers.brave > 0.45 || p.fan > 0;
+  if (happy) { setState(p, 'cheer', 2.6); fanUp(p); } else setState(p, 'cower', 1.8);
+  say(p, pick(happy ? L.dropHappy : L.dropDizzy), 2.6); p.carriedOnce = true;
+}
+
+/* ---------- street crime + hand-to-hand fighting ---------- */
+const STREET = { crime: null, next: 45, engaged: false, done: 0 };
+function canCrime(){ return started && CITY.on && !MS.on && !BR.on && !STREET.crime && !CITY.missions.some(m => m.state === 'active'); }
+function crimeSpot(near){
+  const st = { road: null, dir: 1, s: 0, pedOnly: true }, out = new THREE.Vector3();
+  for (let k = 0; k < 40; k++) {
+    rfRandom(st, r => r.ped); rfPos(st, 7.4, out);
+    const d = Math.hypot(out.x - pos.x, out.z - pos.z);
+    if (d > (near ? 55 : 70) && d < (near ? 130 : 160)) { out.y = platformY(out.x, out.z); return out; }
+  }
+  return null;
+}
+function borrowPed(farFrom){ // someone out of sight becomes part of the scene
+  let best = null, bd = 0;
+  for (const p of PEDS) { if (p.foe || p.state !== 'walk' || p === CARRY.p) continue; const d = Math.hypot(p.pos.x - pos.x, p.pos.z - pos.z); if (d > bd) { bd = d; best = p; } }
+  return best;
+}
+function makeThug(p, at, i, crime){
+  dressPed(p, 'thug'); p.name = pick(['Razor', 'Knuckles', 'Vince', 'Dex', 'Mags', 'Spike', 'Bruno', 'Lefty']); p.foe = true; p.kind = 'thug'; p.alive = true; p.hostile = true;
+  p.hp = p.hpMax = crime.type === 'mug' ? 60 : 100; p.acc = { beam: 1, water: 1 }; p.crime = crime; p.slot = i * TAU / 3 + rnd(-0.3, 0.3); p.cd = rnd(0.8, 1.6);
+  p.pos.set(at.x + Math.cos(p.slot) * 1.6, at.y, at.z + Math.sin(p.slot) * 1.6); p.onHit = (amt, hit, dir, cls) => streetHit(p, amt, hit, dir, cls);
+  setState(p, crime.type === 'mug' ? 'runaway' : 'harass');
+}
+function startCrime(type, tip){
+  if (!canCrime()) return null;
+  const at = crimeSpot(tip); if (!at) return null;
+  const c = { type, at, thugs: [], victim: null, done: false, t: 0, engaged: false, tip: !!tip };
+  const v = borrowPed(); if (!v) return null;
+  v.pos.copy(at); v.yaw = 0; c.victim = v; v.crime = c; v.partner = null; setState(v, 'victim');
+  const n = type === 'mug' ? 1 : (Math.random() < 0.5 ? 2 : 3);
+  for (let i = 0; i < n; i++) { const p = borrowPed(); if (!p) break; makeThug(p, at, i, c); c.thugs.push(p); }
+  if (!c.thugs.length) { v.crime = null; setState(v, 'walk'); return null; }
+  if (type === 'mug') { const th = c.thugs[0]; th.hasBag = true; th.st = { road: null, dir: 1, s: 0, pedOnly: true }; rfNearest(at.x, at.z, th.st, r => r.ped); say(v, pick(L.thief), 4, true); }
+  else say(v, pick(L.help), 4, true);
+  STREET.crime = c; c.helpT = 3.5;
+  if (!tip) toast('<b>Someone is shouting for help!</b> Follow the red marker.', 3500);
+  noiseBurst('bandpass', 900, 1600, 0.35, 0.05);
+  return c;
+}
+function streetHit(p, amt, hit, dir, cls){
+  if (!p.alive || p.state === 'ko') return;
+  p.hp -= amt; p.flashT = 0.15;
+  const big = cls === 'big' || cls === 'ram' || amt >= 45;
+  if (cls === 'punch' || big) popNum(big ? pick(['WHAM!', 'POW!', 'BAM!']) : String(Math.round(amt)), hit, big ? 'big' : 'beam');
+  else if (nowT - (p.numT || 0) > 0.25) { p.numT = nowT; popNum(String(Math.max(1, Math.round(amt))), hit, cls); }
+  if (p.crime && !p.crime.engaged) engageCrime(p.crime);
+  const hx = dir.x, hz = dir.z, hl = Math.hypot(hx, hz) || 1;
+  if (p.hp <= 0) { p.alive = false; tumble(p, hx / hl, hz / hl, big ? 11 : 7, 5); p.koNext = true; say(p, pick(L.ko), 2.4); thugDown(p); return; }
+  if (big) { tumble(p, hx / hl, hz / hl, 8, 4); return; }
+  if (cls === 'water') { p.pos.x += hx / hl * 0.3; p.pos.z += hz / hl * 0.3; pushOut(p); }
+  else if (cls === 'punch') { p.pos.x += hx / hl * 0.5; p.pos.z += hz / hl * 0.5; pushOut(p); }
+  setState(p, 'stagger', cls === 'beam' ? 0.25 : 0.4);
+}
+function thugDown(p){
+  const c = p.crime; if (p.hasBag) { p.hasBag = false; popNum('BAG RECOVERED', _pv2.copy(p.pos).add(UP).add(UP), 'good'); }
+  cityEv('crook'); addXP(25);
+  if (c && c.thugs.every(t => !t.alive)) endCrime(c, true);
+}
+function engageCrime(c){
+  if (c.engaged) return; c.engaged = true;
+  for (const t of c.thugs) if (t.alive && t.state !== 'runaway') { setState(t, 'stance'); t.cd = rnd(0.6, 1.4); }
+  const t0 = c.thugs.find(t => t.alive); if (t0 && c.type !== 'mug') say(t0, pick(L.taunt), 2.2);
+}
+function endCrime(c, won){
+  c.done = true; STREET.done++;
+  const v = c.victim;
+  if (won) {
+    const d = DISTRICT_OF(c.at); CITY.safety[d] = clamp(CITY.safety[d] + 3, 0, 100); CITY.trust = clamp(CITY.trust + 2, 0, 100);
+    addXP(40 + 20 * c.thugs.length); flowAdd(12, 'STREET SAVED', 0); sChime(); saveT = Math.max(saveT, 0.01);
+    if (v && v.crime === c) { v.crime = null; setState(v, 'thank', 4); v.fan = Math.max(v.fan, 2); say(v, pick(L.thank), 3.2); fanUp(v, 0); cheer(c.at, 25); }
+  } else if (v && v.crime === c) { v.crime = null; backToStreet(v); }
+  STREET.crime = null; STREET.next = rnd(55, 95) * (0.6 + CITY.safety[DISTRICT_OF(c.at)] / 100);
+}
+function DISTRICT_OF(v){ return districtAt(v.x, v.z); }
+/* hero punches: the action button near a thug */
+const MELEE = { t: 0, dur: 0.13, target: null, from: new THREE.Vector3(), to: new THREE.Vector3(), chain: 0, lastT: -9, readyT: 0 };
+function meleeTarget(){
+  if (!started || PSEL.on || CARRY.p) return null;
+  const low = mode === 'run' || (mode === 'fly' && pos.y - FEET - surfaceUnder(pos.x, pos.z, pos.y) < 3);
+  if (!low) return null;
+  const fx = Math.sin(camYaw), fz = Math.cos(camYaw);
+  let best = null, bs = 1e9;
+  for (const p of PEDS) {
+    if (!p.foe || !p.alive || FALLEN[p.state]) continue;
+    const dx = p.pos.x - pos.x, dz = p.pos.z - pos.z, d = Math.hypot(dx, dz);
+    if (d > 7.5 || Math.abs(p.pos.y + 1 - pos.y) > 3) continue;
+    const dot = (dx * fx + dz * fz) / (d || 1); if (d > 2.6 && dot < 0.4) continue;
+    const sc = d * (1.7 - dot); if (sc < bs) { bs = sc; best = p; }
+  }
+  return best;
+}
+function meleeTry(){
+  const p = meleeTarget(); if (!p) return false;
+  const dx = p.pos.x - pos.x, dz = p.pos.z - pos.z, d = Math.hypot(dx, dz) || 1;
+  MELEE.target = p; MELEE.t = MELEE.dur; MELEE.from.copy(pos);
+  MELEE.to.set(pos.x + dx / d * Math.max(0, d - 1.15), pos.y, pos.z + dz / d * Math.max(0, d - 1.15));
+  heroFace(p.pos.x, p.pos.z, p.pos.y + 1.2); heading = Math.atan2(dx, dz); whoosh();
+  lastPowerT = nowT;
+  return true;
+}
+function meleeStep(dt){
+  if (MELEE.t <= 0) return;
+  MELEE.t -= dt; const k = 1 - Math.max(0, MELEE.t) / MELEE.dur, e = k * (2 - k);
+  const nx = MELEE.from.x + (MELEE.to.x - MELEE.from.x) * e, nz = MELEE.from.z + (MELEE.to.z - MELEE.from.z) * e;
+  let blocked = false; for (const b of BUILD) if (!b.collapsed && solidAt(b, nx, pos.y, nz, 0.5, true)) { blocked = true; break; }
+  if (!blocked) { pos.x = nx; pos.z = nz; } vel.x *= 0.2; vel.z *= 0.2;
+  if (MELEE.t > 0) return;
+  const p = MELEE.target; MELEE.target = null; if (!p || !p.alive || FALLEN[p.state]) return;
+  MELEE.chain = nowT - MELEE.lastT < 1.15 ? MELEE.chain + 1 : 1; MELEE.lastT = nowT;
+  const heavy = MELEE.chain % 3 === 0 || p.state === 'windup' && nowT - p.windT < 0.25;
+  const dx = p.pos.x - pos.x, dz = p.pos.z - pos.z, d = Math.hypot(dx, dz) || 1;
+  heroFace(p.pos.x, p.pos.z, p.pos.y + 1.2);
+  damage(p, heavy ? 45 : 30, _pv2.set(p.pos.x, p.pos.y + 1.3, p.pos.z), _pv.set(dx / d, 0.2, dz / d), heavy ? 'big' : 'punch');
+  addHitStop(heavy ? 0.09 : 0.05); trauma = Math.min(1, trauma + (heavy ? 0.3 : 0.14)); buzz(heavy ? 35 : 18);
+  noiseBurst('bandpass', 250, 900, 0.07, heavy ? 0.22 : 0.15); tone('square', heavy ? 160 : 220, 80, 0.08, 0.06);
+  sparks(_pv2, heavy ? 8 : 4, 1, 0.92, 0.6, heavy ? 9 : 6);
+}
+function counterCheck(p){ // DASH while a thug winds up = counter
+  return dashT > DASH_SECS - 0.25 && p.state === 'windup' && heroDist(p) < 4.5;
+}
+function streetThugStep(p, dt){
+  const c = p.crime, hd = heroDist(p), heroLow = pos.y - FEET - surfaceUnder(pos.x, pos.z, pos.y) < 6;
+  if (p.flashT > 0) p.flashT -= dt;
+  switch (p.state) {
+    case 'harass': {
+      const v = c && c.victim; if (v) { const a = p.slot + p.t * 0.4; walkTo(p, v.pos.x + Math.cos(a) * 1.5, v.pos.z + Math.sin(a) * 1.5, 1.2, dt); faceTo(p, v.pos.x, v.pos.z, dt); }
+      if (hd < 22 && heroLow) engageCrime(c);
+      break;
+    }
+    case 'runaway': {
+      p.speed = hd < 25 ? 6.8 : 5.2; rfAdvance(p.st, p.speed * dt); p.yaw = rfPos(p.st, 7.4, p.pos); p.ph += dt * p.speed * 2.6;
+      if (hd > 200 && c && c.t > 8) { // got away
+        if (c.victim) say(c.victim, 'He got away...', 2.5); p.foe = false; p.alive = true; c.thugs.forEach(t => { t.foe = false; recycle(t); }); endCrime(c, false);
+      }
+      break;
+    }
+    case 'stance': {
+      if (!heroLow || hd > 40) { p.cd = 1; if (c && hd > 45 && c.t > 4) { p.slot += dt; } faceTo(p, pos.x, pos.z, dt); break; }
+      const a = p.slot + p.t * 0.25, R = 3.1;
+      walkTo(p, pos.x + Math.cos(a) * R, pos.z + Math.sin(a) * R, hd > 6 ? 4.2 : 1.6, dt); faceTo(p, pos.x, pos.z, dt * 2);
+      p.cd -= dt;
+      if (p.cd <= 0 && hd < 7 && !PEDS.some(o => o.foe && (o.state === 'windup' || o.state === 'strike'))) { setState(p, 'windup', 0.62); p.windT = nowT; popNum('!', _pv2.set(p.pos.x, p.pos.y + 2.3, p.pos.z), 'warn'); tone('sawtooth', 300, 760, 0.3, 0.04); }
+      break;
+    }
+    case 'windup':
+      walkTo(p, pos.x, pos.z, hd > 1.5 ? 4.5 : 0, dt); faceTo(p, pos.x, pos.z, dt * 3);
+      if (counterCheck(p)) {
+        popNum('COUNTER!', _pv2.set(pos.x, pos.y + 2, pos.z), 'big'); COMBAT.counters++; comboAdd(2); flowAdd(15, '', 6); COMBAT.slowT = Math.max(COMBAT.slowT, 0.35);
+        const dx = p.pos.x - pos.x, dz = p.pos.z - pos.z, d = Math.hypot(dx, dz) || 1; damage(p, 55, _pv2.set(p.pos.x, p.pos.y + 1.3, p.pos.z), _pv.set(dx / d, 0.3, dz / d), 'big');
+        break;
+      }
+      if (p.t >= p.dur) {
+        setState(p, 'strike', 0.18);
+        if (hd < 2.2 && !heroUntouchable()) { const dx = pos.x - p.pos.x, dz = pos.z - p.pos.z, d = Math.hypot(dx, dz) || 1; heroHit(_pv.set(dx / d, 0.35, dz / d), 12); noiseBurst('bandpass', 200, 700, 0.08, 0.2); }
+        else if (hd < 3.5) popNum('DODGED', _pv2.set(pos.x, pos.y + 1.8, pos.z), 'good');
+      }
+      break;
+    case 'strike': if (p.t >= p.dur) { setState(p, 'stance'); p.cd = rnd(1.3, 2.4); } break;
+    case 'stagger': if (p.t >= p.dur) { setState(p, c && c.engaged ? 'stance' : 'harass'); p.cd = Math.max(p.cd, 0.7); } break;
+  }
+}
+function recycle(p){ // a knocked-out thug is taken away; somewhere else a new person walks the street
+  p.foe = false; p.alive = true; p.hostile = false; p.onHit = null; p.acc = null; p.crime = null; p.hasBag = false;
+  rfRandom(p.st, r => r.ped); p.yaw = rfPos(p.st, 7.4 * p.side, p.pos);
+  dressPed(p, pick(DIST_ARCH[districtAt(p.pos.x, p.pos.z)])); setState(p, 'walk'); p.lie = 0;
+}
+
+/* ---------- per frame ---------- */
+const _socialI = { i: 0 };
+function pedStep(dt, t){
+  const heroSp = vel.length(), onFoot = heroOnFoot();
+  for (const p of PEDS) {
+    p.t += dt;
+    const s = p.state;
+    if (s === 'gone') continue;
+    if (p.foe && !FALLEN[s]) { streetThugStep(p, dt); continue; }
+    switch (s) {
+      case 'walk': {
+        rfAdvance(p.st, p.speed * dt); p.yaw = rfPos(p.st, 7.4 * p.side, p.pos); p.ph += dt * p.speed * (p.jog ? 2.6 : 3.3);
+        p.idleT -= dt; p.chatCD -= dt;
+        if (p.idleT <= 0) { p.idleT = rnd(8, 18); dailyLife(p); break; }
+        const near = heroDist(p);
+        if (near < 13 && onFoot && heroSp < 6 && p.seen <= 0 && !p.jog) {
+          p.seen = 18;
+          if (p.angry > 0) { setState(p, 'look', 2); if (Math.random() < 0.5) say(p, pick(L.grumpy), 2.2); }
+          else if (p.fan > 0 || (p.pers.friendly > 0.72 && Math.random() < 0.6)) { setState(p, 'wave', 2.2); if (nowT - p.greetT > 30 && Math.random() < 0.6) { p.greetT = nowT; say(p, p.fan ? pick(L.fan) : pick(L.greet), 2.2); } }
+          else if (p.pers.curious > 0.7 && p.pers.friendly > 0.45 && !INTER.asker && nowT - p.askedT > 120 && p.met === 0) { setState(p, 'approach', 9); p.askedT = nowT; }
+          else setState(p, 'look', 2.2);
+        }
+        if (!onFoot && near < 12 && heroSp > 24 && p.seen <= 0 && Math.abs(pos.y - p.pos.y) < 14) { p.seen = 10; setState(p, Math.random() < 0.5 ? 'cheer' : 'look', 2); if (Math.random() < 0.3) say(p, pick(L.flyby), 1.6); }
+        p.seen -= dt;
+        break;
+      }
+      case 'look': faceTo(p, pos.x, pos.z, dt); if (p.t > p.dur) setState(p, 'walk'); break;
+      case 'wave': faceTo(p, pos.x, pos.z, dt); if (p.t > p.dur) setState(p, 'walk'); break;
+      case 'phone': if (p.t > p.dur) setState(p, 'walk'); break;
+      case 'chat': {
+        const q = p.partner; if (q && q.state === 'chat') faceTo(p, q.pos.x, q.pos.z, dt);
+        if (p.t > p.dur || !q || q.state !== 'chat') { setState(p, 'walk'); p.partner = null; p.chatCD = rnd(30, 60); break; }
+        if (p.i < (q ? q.i : 0) && heroDist(p) < 22 && Math.random() < dt * 0.5) say(Math.random() < 0.5 ? p : q, pick(L.chat), 1.6);
+        break;
+      }
+      case 'tobench': { const b = p.bench; if (!b || b.used !== p) { backToStreet(p); break; } const D = walkTo(p, b.sx, b.sz, p.speed0, dt); if (D < 0.15) { p.pos.set(b.sx, 0, b.sz); p.yaw = b.ry; setState(p, 'sit', rnd(10, 25)); } if (p.t > 12) { b.used = null; p.bench = null; backToStreet(p); } break; }
+      case 'sit': if (p.t > p.dur) { if (p.bench) p.bench.used = null; p.bench = null; backToStreet(p); } break;
+      case 'return': { const D = walkTo(p, p.to.x, p.to.z, p.speed0 * 1.2, dt); if (D < 0.6 || p.t > 15) { p.state = 'walk'; p.t = 0; } break; }
+      case 'film': faceTo(p, heroDist(p) < 40 ? pos.x : p.from.x, heroDist(p) < 40 ? pos.z : p.from.z, dt); if (p.t > p.dur) backToStreet(p); break;
+      case 'cower': if (p.t > p.dur) { if (p.crime) setState(p, 'victim'); else { setState(p, 'flee', rnd(2.5, 4)); p.speed = rnd(4.5, 6); } } break;
+      case 'flee': case 'evac': {
+        const tx = s === 'evac' ? p.to.x : p.pos.x + (p.pos.x - p.from.x), tz = s === 'evac' ? p.to.z : p.pos.z + (p.pos.z - p.from.z);
+        const D = walkTo(p, tx, tz, p.speed, dt);
+        if (s === 'flee' && p.t > p.dur) backToStreet(p);
+        if (s === 'evac' && D < 2) setState(p, 'cheer', 3);
+        break;
+      }
+      case 'cheer': faceTo(p, pos.x, pos.z, dt); if (p.t > p.dur) { if (p.evac) { p.evac = false; pedSnap(p); } else if (p.carriedOnce || p.dropFall) { p.carriedOnce = false; backToStreet(p); } else setState(p, 'walk'); } break;
+      case 'idle': if (p.target) faceTo(p, p.target.x, p.target.z, dt); break;
+      case 'approach': {
+        const fx = Math.sin(camYaw), fz = Math.cos(camYaw), D = walkTo(p, pos.x + fx * 1.7, pos.z + fz * 1.7, 2.6, dt);
+        if (D < 0.5 || heroDist(p) < 1.9) { setState(p, 'ask', 7); INTER.asker = p; say(p, pick(L.ask), 3); }
+        else if (!onFoot || p.t > p.dur) backToStreet(p);
+        break;
+      }
+      case 'ask': faceTo(p, pos.x, pos.z, dt); if (p.t > p.dur || heroDist(p) > 9 || !onFoot) { say(p, pick(L.askSad), 2); if (INTER.asker === p) INTER.asker = null; backToStreet(p); } break;
+      case 'fistbump':
+        faceTo(p, pos.x, pos.z, dt * 2); heroFace(p.pos.x, p.pos.z, p.pos.y + 1.25);
+        if (!p.bumped && p.t > 0.42) { p.bumped = true; _pv2.set((p.pos.x + pos.x) / 2, pos.y + 0.25, (p.pos.z + pos.z) / 2); sparks(_pv2, 6, 1, 0.95, 0.5, 4); tone('triangle', 520, 1040, 0.12, 0.1); buzz(25); fanUp(p); say(p, pick(L.fist), 2.6); flowAdd(4, 'FIST BUMP', 3); }
+        if (p.t > p.dur) setState(p, 'walk');
+        break;
+      case 'talk': faceTo(p, pos.x, pos.z, dt); if (p.t > p.dur) setState(p, 'walk'); break;
+      case 'selfie': if (PSEL.on && PSEL.p === p) heroFace(PSEL.cam.x, PSEL.cam.z, PSEL.cam.y + 1.2); else if (p.t > 0.3) backToStreet(p); break; // hero turns to the camera, arm up holding the phone
+      case 'thank': faceTo(p, pos.x, pos.z, dt); if (heroDist(p) > 3 && heroDist(p) < 25) walkTo(p, pos.x, pos.z, 2.2, dt); if (p.t > p.dur) backToStreet(p); break;
+      case 'victim': { const c = p.crime; faceTo(p, c && c.thugs[0] ? c.thugs[0].pos.x : pos.x, c && c.thugs[0] ? c.thugs[0].pos.z : pos.z, dt); break; }
+      case 'carried': {
+        const fx = Math.sin(heading), fz = Math.cos(heading), rx = -fz, rz = fx;
+        p.pos.set(pos.x + fx * 0.55 - rx * 0.7, pos.y - 0.05, pos.z + fz * 0.55 - rz * 0.7); p.yaw = heading + Math.PI / 2; p.lie = 1;
+        CARRY.screamT -= dt; if (CARRY.screamT <= 0 && heroSp > 18) { CARRY.screamT = rnd(3, 5); say(p, pick(p.pers.brave > 0.5 ? L.carryBrave : L.carryTimid), 2); }
+        castT = nowT; shotDir.set(fx, -0.1, fz);
+        break;
+      }
+      case 'tumble': {
+        p.v.y -= 22 * dt; p.pos.addScaledVector(p.v, dt); p.rx += p.wx * dt; p.rz += p.wz * dt; p.ph += dt * 20;
+        for (const b of BUILD) { if (b.collapsed) continue; const n = solidAt(b, p.pos.x, p.pos.y + 0.5, p.pos.z, 0.4, true); if (n) { p.pos.x += n.x * n.d; p.pos.z += n.z * n.d; const vn = p.v.x * n.x + p.v.z * n.z; if (vn < 0) { p.v.x -= 1.6 * vn * n.x; p.v.z -= 1.6 * vn * n.z; p.v.multiplyScalar(0.5); if (Math.abs(vn) > 6) { dustFX(_pv2.copy(p.pos).add(UP), 4, 0.6); trauma = Math.min(1, trauma + 0.05); } } } }
+        const g = platformY(p.pos.x, p.pos.z);
+        if (p.pos.y <= g && p.v.y < 0) {
+          p.pos.y = g;
+          if (p.v.y < -7) { p.v.y *= -0.3; p.v.x *= 0.6; p.v.z *= 0.6; dustFX(_pv2.copy(p.pos), 3, 0.5); }
+          else { p.v.set(0, 0, 0); setState(p, p.koNext ? 'ko' : 'down', p.koNext ? 9 : rnd(1.2, 2.2)); p.koNext = false; p.lie = 1; p.rx = 0; p.rz = 0; }
+        }
+        if (p.t > 6) { p.pos.y = platformY(p.pos.x, p.pos.z); setState(p, 'down', 1); p.lie = 1; }
+        break;
+      }
+      case 'down':
+        if (p.t > p.dur) setState(p, 'getup', 0.8);
+        break;
+      case 'getup':
+        p.lie = Math.max(0, 1 - p.t / p.dur);
+        if (p.t > p.dur) { p.lie = 0; if (p.dropFall) { p.dropFall = false; say(p, pick(L.dropFall), 2.4); setState(p, 'look', 2); } else if (p.foe) { setState(p, p.crime && p.crime.engaged ? 'stance' : 'harass'); p.cd = 0.8; } else if (p.crime && p.crime.victim === p) setState(p, 'victim'); else { if (p.angry > 0 && Math.random() < 0.7) say(p, pick(L.angry), 2.2); backToStreet(p); } }
+        break;
+      case 'ko':
+        if (p.t > 2 && Math.random() < dt * 0.4) say(p, '💫', 1.2);
+        if (p.t > p.dur) recycle(p);
+        break;
+    }
+    // you run into people: they fall over (and remember it)
+    if (!FALLEN[p.state] && p.state !== 'carried' && p.state !== 'selfie' && heroSp > 11 && MELEE.t <= 0) {
+      const dx = p.pos.x - pos.x, dz = p.pos.z - pos.z, dd = Math.hypot(dx, dz), dy = pos.y - FEET - p.pos.y;
+      if (dd < 1.05 && dy > -1 && dy < 1.6) {
+        const k = Math.min(12, heroSp * 0.45);
+        if (p.foe) damage(p, 25, _pv2.set(p.pos.x, p.pos.y + 1.2, p.pos.z), _pv.set(vel.x / heroSp, 0.3, vel.z / heroSp), 'ram');
+        else { tumble(p, vel.x / heroSp, vel.z / heroSp, k); p.angry = 1; say(p, 'HEY!!', 1.6); CITY.trust = clamp(CITY.trust - 0.3, 0, 100); }
+      }
+    }
+  }
+  socialStep(dt);
+  crimeStep(dt);
+  interStep(dt);
+  meleeStep(dt);
+  bubStep(dt);
+}
+/* daily life: chats, phone calls, benches */
+function dailyLife(p){
+  const r = Math.random();
+  if (r < 0.3 && BENCHES.length) {
+    let best = null, bd = 9;
+    for (const b of BENCHES) { if (b.used) continue; const d = Math.hypot(b.x - p.pos.x, b.z - p.pos.z); if (d < bd) { bd = d; best = b; } }
+    if (best) { best.used = p; p.bench = best; best.sx = best.x + Math.sin(best.ry) * 0.12; best.sz = best.z + Math.cos(best.ry) * 0.12; setState(p, 'tobench'); return; }
+  }
+  if (r < 0.5 && !p.jog) { setState(p, 'phone', rnd(4, 9)); if (heroDist(p) < 20 && Math.random() < 0.4) say(p, pick(L.phone), 2.4); }
+}
+function socialStep(dt){
+  // two walkers who meet may stop for a chat (a few checks per frame)
+  for (let k = 0; k < 4; k++) {
+    const p = PEDS[_socialI.i = (_socialI.i + 1) % PED_N];
+    if (p.state !== 'walk' || p.chatCD > 0 || p.foe || p.jog) continue;
+    for (const q of PEDS) {
+      if (q === p || q.state !== 'walk' || q.chatCD > 0 || q.foe || q.jog) continue;
+      if (Math.abs(q.pos.x - p.pos.x) < 2.4 && Math.abs(q.pos.z - p.pos.z) < 2.4) {
+        if (Math.random() < 0.6) { const d = rnd(5, 9); setState(p, 'chat', d); setState(q, 'chat', d); p.partner = q; q.partner = p; }
+        else { p.chatCD = 20; q.chatCD = 20; }
+        break;
+      }
+    }
+  }
+}
+function crimeStep(dt){
+  if ((MS.on || BR.on) && (STREET.crime || CARRY.p)) peopleReset();
+  if (!STREET.crime) { if (canCrime()) { STREET.next -= dt; if (STREET.next <= 0) { STREET.next = 25; startCrime(Math.random() < 0.45 ? 'mug' : 'gang'); } } }
+  const c = STREET.crime;
+  STREET.engaged = false;
+  if (c) {
+    c.t += dt; c.helpT -= dt;
+    if (c.helpT <= 0 && c.victim && c.victim.crime === c) { c.helpT = rnd(3.5, 5); say(c.victim, pick(c.type === 'mug' ? L.thief : L.help), 2.6, true); }
+    const live = c.thugs.filter(t => t.alive);
+    STREET.engaged = live.some(t => t.state !== 'runaway' && t.state !== 'harass' && heroDist(t) < 16) && mode === 'run';
+    if (c.t > 150 && !c.engaged) { c.thugs.forEach(t => recycle(t)); endCrime(c, false); }
+    // red marker toward the trouble
+    const tgt = live.find(t => t.hasBag) || live[0] || c.victim;
+    if (tgt && !c.done) {
+      _bv.set(tgt.pos.x, tgt.pos.y + 2.4, tgt.pos.z); const d = _bv.distanceTo(camera.position); _bv.project(camera);
+      let x = _bv.x, y = _bv.y; const off = _bv.z > 1 || Math.abs(x) > 0.92 || Math.abs(y) > 0.9;
+      if (off) { if (_bv.z > 1) { x = -x; y = -y; } const k = 0.9 / Math.max(Math.abs(x), Math.abs(y), 0.001); x = clamp(x * k, -0.9, 0.86); y = clamp(y * k, -0.82, 0.8); }
+      if (d > 14 || off) { crimeEl.style.display = 'block'; crimeEl.textContent = (c.type === 'mug' ? '⚠ THIEF ' : '⚠ HELP ') + Math.round(d) + 'm'; crimeEl.style.transform = 'translate(' + ((x * 0.5 + 0.5) * innerWidth).toFixed(0) + 'px,' + ((-y * 0.5 + 0.5) * innerHeight).toFixed(0) + 'px) translate(-50%,-50%)'; }
+      else crimeEl.style.display = 'none';
+    } else crimeEl.style.display = 'none';
+    // curious people film the fight
+    if (STREET.engaged && Math.random() < dt * 0.6) for (const p of PEDS) if (!p.foe && p.state === 'walk' && p.pers.curious > 0.55 && heroDist(p) > 10 && heroDist(p) < 32) { setState(p, 'film', rnd(5, 9)); p.from.copy(pos); break; }
+  } else crimeEl.style.display = 'none';
+  const ready = !!meleeTarget(); if (ready !== MELEE_READY) { MELEE_READY = ready; refreshPowerLabel(); }
+}
+function interStep(dt){
+  if (INTER.busyT > 0) { INTER.busyT -= dt; if (INTER.busyT <= 0) INTER.busyP = null; }
+  let f = null;
+  if (CARRY.p) f = CARRY.p;
+  else if (heroOnFoot() && grounded && !STREET.engaged && !PSEL.on && INTER.busyT <= 0) {
+    if (INTER.asker && INTER.asker.state === 'ask' && heroDist(INTER.asker) < 5) f = INTER.asker;
+    else {
+      const fx = Math.sin(camYaw), fz = Math.cos(camYaw); let bs = 1e9;
+      for (const p of PEDS) {
+        if (p.foe || !CIVIL_FREE[p.state] || p.crime) continue;
+        const dx = p.pos.x - pos.x, dz = p.pos.z - pos.z, d = Math.hypot(dx, dz);
+        if (d > 3.8 || Math.abs(p.pos.y + FEET - pos.y) > 1.5) continue;
+        const dot = (dx * fx + dz * fz) / (d || 1); if (d > 2 && dot < 0.5) continue;
+        const sc = d * (1.6 - dot); if (sc < bs) { bs = sc; f = p; }
+      }
+    }
+  }
+  INTER.focus = f;
+  if (f !== INTER.shown || (f && (f.fan !== INTER.fan || f.state === 'ask' !== INTER.ask || !!CARRY.p !== INTER.carry))) { INTER.fan = f && f.fan; INTER.ask = f && f.state === 'ask'; INTER.carry = !!CARRY.p; showCard(f); }
+  if (f) {
+    _bv.set(f.pos.x, f.pos.y + (f.lie > 0.5 ? 0.8 : 2.15 * f.scale), f.pos.z); _bv.project(camera);
+    if (_bv.z < 1) tag.style.transform = 'translate(' + ((_bv.x * 0.5 + 0.5) * innerWidth).toFixed(0) + 'px,' + ((-_bv.y * 0.5 + 0.5) * innerHeight - 4).toFixed(0) + 'px) translate(-50%,-100%)';
+  }
+}
+function peopleBlocksFP(){ return STREET.engaged || !!CARRY.p || PSEL.on; }
+function peopleReset(){ // leaving free roam (meteor storm, rival): crimes end, everyone lets go
+  if (CARRY.p) { const p = CARRY.p; CARRY.p = null; backToStreet(p); }
+  if (STREET.crime) { STREET.crime.thugs.forEach(t => recycle(t)); endCrime(STREET.crime, false); }
+  PSEL.on = false; showCard(null);
+}
+
+/* ---------- poses + drawing ---------- */
+const _J = { aLx: 0, aLz: 0, aRx: 0, aRz: 0, lL: 0, lR: 0, lean: 0, lift: 0, headP: 0, phone: 0 };
+function poseOf(p, t){
+  const J = _J; J.aLx = 0; J.aLz = 0.1; J.aRx = 0; J.aRz = -0.1; J.lL = 0; J.lR = 0; J.lean = 0; J.lift = 0; J.headP = 0; J.phone = 0;
+  const s = p.state, w = t * 1 + p.i;
+  const moving = s === 'walk' || s === 'flee' || s === 'evac' || s === 'return' || s === 'tobench' || s === 'approach' || s === 'runaway' || ((s === 'stance' || s === 'harass' || s === 'thank') && p.moved);
+  if (moving) {
+    const run = s === 'flee' || s === 'evac' || s === 'runaway' || p.jog, amp = run ? 0.85 : 0.45;
+    J.lL = Math.sin(p.ph) * amp; J.lR = -J.lL; J.aLx = -J.lL * 0.85; J.aRx = -J.lR * 0.85; J.lift = Math.abs(Math.cos(p.ph)) * (run ? 0.07 : 0.025); J.lean = run ? 0.18 : 0.03;
+    if (s === 'runaway' && p.hasBag) { J.aLx = -0.3; J.aLz = 0.25; }
+  }
+  switch (s) {
+    case 'chat': case 'talk': case 'idle': { const sp = s === 'talk' || (p.partner && (Math.floor(t / 1.6) + p.i) % 2 === 0); if (sp) { J.aRx = -0.55 - 0.35 * Math.max(0, Math.sin(w * 4)); J.aRz = -0.25; J.headP = Math.sin(w * 3) * 0.08; } else { J.aLx = -0.2; J.aRx = -0.2; } break; }
+    case 'phone': J.aRx = -2.6; J.aRz = -0.45; J.phone = 1; J.headP = 0.08; break;
+    case 'film': case 'ask': J.aRx = -1.55; J.aRz = 0.05; J.aLx = -1.35; J.aLz = -0.15; J.phone = 1; J.headP = -0.06; if (s === 'ask') J.lift = Math.abs(Math.sin(w * 6)) * 0.05; break;
+    case 'look': J.headP = -0.05; break;
+    case 'wave': J.aRx = -2.9; J.aRz = -0.45 + Math.sin(w * 11) * 0.35; break;
+    case 'cheer': J.aLx = -2.9 + Math.sin(w * 9) * 0.25; J.aRx = -2.9 - Math.sin(w * 9) * 0.25; J.aLz = 0.3; J.aRz = -0.3; J.lift = Math.abs(Math.sin(w * 8)) * 0.22; break;
+    case 'cower': case 'victim': J.lift = -0.42; J.lean = 0.5; J.aLx = -2.5; J.aRx = -2.5; J.aLz = 0.6; J.aRz = -0.6; J.lL = -1.1; J.lR = -0.5; if (s === 'victim' && Math.sin(w * 2) > 0.6) { J.lift = 0; J.lean = 0.05; J.aRx = -2.8; J.aRz = -0.6 + Math.sin(w * 14) * 0.3; J.lL = 0; J.lR = 0; } break;
+    case 'sit': J.lift = -0.36; J.lL = -1.5; J.lR = -1.5; J.aLx = -0.45; J.aRx = -0.45; break;
+    case 'fistbump': { const k = clamp((p.t - 0.15) / 0.25, 0, 1); J.aRx = -1.55 * k; J.aRz = 0.12 * k; J.lean = 0.08 * k; break; }
+    case 'selfie': J.aLx = -2.9; J.aLz = 0.35; J.lean = -0.04; break;
+    case 'thank': J.aRx = -2.8; J.aRz = -0.45 + Math.sin(w * 10) * 0.3; J.aLx = -0.4; break;
+    case 'carried': J.aLx = -1.4; J.aRx = -1.1; J.lL = -0.2; J.lR = -0.1; break;
+    case 'tumble': J.aLx = Math.sin(p.ph) * 1.6; J.aRx = Math.cos(p.ph * 0.9) * 1.6; J.aLz = 1.1; J.aRz = -1.1; J.lL = Math.sin(p.ph * 1.1) * 0.8; J.lR = -J.lL; break;
+    case 'down': case 'ko': case 'getup': J.aLz = 1.1; J.aRz = -1.1; J.aLx = -0.3; J.lL = 0.1; J.lR = -0.1; break;
+    case 'harass': if (!p.moved) { J.aRx = -0.9 + Math.sin(w * 6) * 0.5; J.lean = 0.12; } break;
+    case 'stance': J.aLx = -1.35; J.aRx = -1.35; J.aLz = 0.4; J.aRz = -0.4; J.lift += Math.abs(Math.sin(w * 6)) * 0.04; if (!p.moved) { J.lL = -0.18; J.lR = 0.18; } break;
+    case 'windup': J.aRx = 0.7; J.aRz = -0.3; J.aLx = -1.4; J.aLz = 0.4; J.lean = -0.12; break;
+    case 'strike': J.aRx = -1.65; J.aRz = 0.15; J.aLx = -1.2; J.lean = 0.28; break;
+    case 'stagger': J.lean = -0.35; J.aLx = 0.6; J.aRx = 0.8; J.aLz = 0.6; J.aRz = -0.6; break;
+  }
+  return J;
+}
+const VISIBLE_D2 = 175 * 175, ZERO_PM = new THREE.Matrix4().makeScale(0, 0, 0);
+function partAt(root, x, y, z, rx, ry, rz, out){ _pe.set(rx, ry, rz, 'YXZ'); _pm.makeRotationFromEuler(_pe); _pm.setPosition(x, y, z); return out.multiplyMatrices(root, _pm); }
+function hidePed(i){ for (const k in PM) PM[k].setMatrixAt(i, ZERO_PM); }
+function pedRender(t){
+  const cx = camera.position.x, cz = camera.position.z, dt = Math.min(0.05, t - (pedRender.lt || t)); pedRender.lt = t;
+  for (const p of PEDS) {
+    const i = p.i;
+    if (p.state === 'gone' || !CITY.life || (p.pos.x - cx) ** 2 + (p.pos.z - cz) ** 2 > VISIBLE_D2) { hidePed(i); continue; }
+    // moving? (for walk cycles while circling)
+    p.moved = p.lastX !== undefined && Math.hypot(p.pos.x - p.lastX, p.pos.z - p.lastZ) > 0.01; p.lastX = p.pos.x; p.lastZ = p.pos.z;
+    const J = poseOf(p, t), j = p.j, k = Math.min(1, dt * 14);
+    for (const key in J) j[key] += (J[key] - j[key]) * (key === 'phone' ? 1 : k);
+    // root: feet on the ground, lean / lie down / tumble spin
+    let pitch = j.lean, roll = 0, lift = j.lift;
+    if (p.state === 'tumble') { pitch = p.rx; roll = p.rz; lift = 0.9; }
+    else if (p.lie > 0) { pitch = -Math.PI / 2 * p.lie + j.lean * (1 - p.lie); lift = 0.14 * p.lie + j.lift * (1 - p.lie); }
+    _pe.set(pitch, p.yaw, roll, 'YXZ'); _pq.setFromEuler(_pe);
+    if (p.state === 'tumble') _pR.compose(_pp.set(p.pos.x, p.pos.y + lift, p.pos.z), _pq, _ps.setScalar(p.scale)), _pR.multiply(_pO.makeTranslation(0, -0.9, 0));
+    else _pR.compose(_pp.set(p.pos.x, p.pos.y + lift, p.pos.z), _pq, _ps.setScalar(p.scale));
+    PM.legL.setMatrixAt(i, partAt(_pR, 0.12, 0.84, 0, j.lL, 0, 0.03, _pA));
+    PM.legR.setMatrixAt(i, partAt(_pR, -0.12, 0.84, 0, j.lR, 0, -0.03, _pA));
+    PM.torso.setMatrixAt(i, partAt(_pR, 0, 1.16, 0, 0, 0, 0, _pA));
+    PM.head.setMatrixAt(i, partAt(_pR, 0, 1.62, 0, j.headP, 0, 0, _pA));
+    partAt(_pR, 0, 1.64, -0.01, j.headP, 0, 0, _pA); if (p.hatK !== 1) _pA.multiply(_pS.makeScale(p.hatK, p.hatK, p.hatK)); PM.hair.setMatrixAt(i, _pA);
+    PM.armL.setMatrixAt(i, partAt(_pR, 0.3, 1.43, 0, j.aLx, 0, j.aLz, _pA));
+    partAt(_pR, -0.3, 1.43, 0, j.aRx, 0, j.aRz, _pA); PM.armR.setMatrixAt(i, _pA);
+    if (j.phone > 0.5) { _pO.copy(_pA); PM.phone.setMatrixAt(i, partAt(_pO, 0, -0.64, 0.06, -Math.PI / 2, 0, 0, _pA)); } else PM.phone.setMatrixAt(i, ZERO_PM);
+    if (p.hasBag) { partAt(_pR, 0.3, 1.43, 0, j.aLx, 0, j.aLz, _pO); PM.bag.setMatrixAt(i, partAt(_pO, 0, -0.72, 0, 0, 0, 0, _pA)); } else PM.bag.setMatrixAt(i, ZERO_PM);
+  }
+  for (const k in PM) PM[k].instanceMatrix.needsUpdate = true;
+}
+function pedEvac(from, to){ // borrow a walker for an evacuation run
+  let p = PEDS.find(x => x.state === 'walk' && !x.foe && x.pos.distanceTo(pos) > 60) || PEDS.find(x => x.state === 'walk' && !x.foe);
+  if (!p) return null;
+  p.pos.copy(from); p.to.copy(to); p.state = 'evac'; p.evac = true; p.t = 0; p.speed = rnd(5, 6.5);
+  return p;
 }
 
 /* =====================================================================
@@ -5066,9 +5768,9 @@ function coreHit(e, amt, at){
 /* ---------- progress: XP, levels, trust, safety, daily challenges ---------- */
 const LEVEL_XP = l => 150 * (l - 1) * l / 2;
 const SAVE_KEY = 'skyguard.city.v1';
-function cityLoad(){ try { const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); if (s) for (const k of ['xp', 'level', 'pts', 'trust', 'done', 'unlockAll', 'calls', 'medals']) if (s[k] !== undefined) CITY[k] = s[k]; if (s && s.sky) { SKY.cycle = s.sky.cycle !== false; SKY.weather = s.sky.weather !== false; } if (s && s.upg) Object.assign(CITY.upg, s.upg); if (s && s.safety) CITY.safety = s.safety.slice(0, 5); if (s && s.best) CITY.best = s.best; if (s && s.daily) CITY.daily = s.daily; } catch (e) {} applyUpg(); }
+function cityLoad(){ try { const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); if (s) for (const k of ['xp', 'level', 'pts', 'trust', 'done', 'unlockAll', 'calls', 'medals', 'fans', 'selfies']) if (s[k] !== undefined) CITY[k] = s[k]; if (s && s.sky) { SKY.cycle = s.sky.cycle !== false; SKY.weather = s.sky.weather !== false; } if (s && s.upg) Object.assign(CITY.upg, s.upg); if (s && s.safety) CITY.safety = s.safety.slice(0, 5); if (s && s.best) CITY.best = s.best; if (s && s.daily) CITY.daily = s.daily; } catch (e) {} applyUpg(); }
 let saveT = 0;
-function citySave(){ saveT = 0; try { localStorage.setItem(SAVE_KEY, JSON.stringify({ xp: CITY.xp, level: CITY.level, pts: CITY.pts, upg: CITY.upg, trust: CITY.trust, safety: CITY.safety, best: CITY.best, daily: CITY.daily, done: CITY.done, unlockAll: CITY.unlockAll, calls: CITY.calls, medals: CITY.medals, sky: { cycle: SKY.cycle, weather: SKY.weather } })); } catch (e) { CITY.saveErr = String(e); } }
+function citySave(){ saveT = 0; try { localStorage.setItem(SAVE_KEY, JSON.stringify({ xp: CITY.xp, level: CITY.level, pts: CITY.pts, upg: CITY.upg, trust: CITY.trust, safety: CITY.safety, best: CITY.best, daily: CITY.daily, done: CITY.done, unlockAll: CITY.unlockAll, calls: CITY.calls, medals: CITY.medals, fans: CITY.fans || 0, selfies: CITY.selfies || 0, sky: { cycle: SKY.cycle, weather: SKY.weather } })); } catch (e) { CITY.saveErr = String(e); } }
 const UPG_DEF = [['beam', 'BEAM POWER', '+20% damage'], ['water', 'WATER BLAST', '+25% fire fighting'], ['boost', 'BOOST SPEED', '+8% top speed'], ['regen', 'ENERGY', '+25% recharge'], ['charge', 'FAST CHARGE', '-13% charge time']];
 function applyUpg(){ const u = CITY.upg; UPK.beam = 1 + 0.2 * u.beam; UPK.water = 1 + 0.25 * u.water; UPK.boost = 1 + 0.08 * u.boost; UPK.regen = 1 + 0.25 * u.regen; UPK.charge = 1 / (1 + 0.15 * u.charge); }
 function buyUpg(k){ if (CITY.pts < 1 || CITY.upg[k] >= 3) return; CITY.pts--; CITY.upg[k]++; applyUpg(); citySave(); sChime(); renderPanel(); }
@@ -6379,6 +7081,7 @@ if (REAL) (function buildDetail(){
   // bench: seat, back and two legs merged into one shape
   const bg = mergeGeos([gBox(2.2, 0.12, 0.6, 0, 0.5, 0, 0x7a5236), gBox(2.2, 0.5, 0.1, 0, 0.8, -0.28, 0x7a5236), gBox(0.1, 0.5, 0.55, -0.95, 0.25, 0, 0x2e3136), gBox(0.1, 0.5, 0.55, 0.95, 0.25, 0, 0x2e3136)]);
   detailInst('bench', bg, toon(0xffffff, { vertexColors: true }), bench);
+  for (const b of bench) BENCHES.push(b); // people sit on them (people.js)
   detailInst('bin', new THREE.CylinderGeometry(0.32, 0.28, 1, 8), toon(0xffffff), bin);
   const hg = mergeGeos([gBox(0.34, 0.6, 0.34, 0, 0.3, 0, 0xc0392b), gBox(0.6, 0.12, 0.16, 0, 0.42, 0, 0xc0392b), gBox(0.26, 0.14, 0.26, 0, 0.67, 0, 0xd9a520)]);
   detailInst('hydrant', hg, toon(0xffffff, { vertexColors: true }), hyd);
@@ -6889,13 +7592,13 @@ function viewHandPos(out){
   return out;
 }
 function renderHands(){
-  if (!VIEW || VIEW.k < 0.62) return;
+  if (!VIEW || VIEW.k < 0.62 || (PSEL && PSEL.on)) return;
   const ac = renderer.autoClear; renderer.autoClear = false; renderer.clearDepth(); renderer.render(HS, camera); renderer.autoClear = ac;
 }
 
 /* ---------- switching ---------- */
 function viewBlocked(){
-  return !started || mode === 'wall' || STUNT.roll > 0 || STUNT.loop > 0 || (grabbed && grabbed.kind !== 'person') || (mode === 'run' && landT > 0);
+  return !started || mode === 'wall' || STUNT.roll > 0 || STUNT.loop > 0 || (grabbed && grabbed.kind !== 'person') || (mode === 'run' && landT > 0) || peopleBlocksFP();
 }
 function viewIsFirst(){ return VIEW.want === 1; }
 function syncViewBtn(){
@@ -6991,7 +7694,7 @@ function powerLanding(impact){
   if (s > 0.9) addHitStop(0.04);
   buzz(Math.round(25 + 35 * s)); boomSound(clamp(0.35 + 0.45 * s, 0.3, 1), true);
   // people flinch, loose things are pushed away
-  scare(pos, 12 + 10 * s);
+  peopleShock(pos, s); // knocks over people right next to you, the rest react (people.js)
   const pr = 5 + 6 * s;
   for (const e of props) if (e.alive && !e.held && e.pos.distanceTo(pos) < pr) { tmp.subVectors(e.pos, pos).setY(0).normalize(); e.vel.x += tmp.x * 7 * s; e.vel.y += 4 * s; e.vel.z += tmp.z * 7 * s; e.moving = true; }
   viewOnLand();
@@ -7055,7 +7758,7 @@ function cityHud(rdt, t){
     if (on) {
       const l = CITY.level, a = LEVEL_XP(l), b = LEVEL_XP(l + 1);
       $('lvNum').textContent = 'LV ' + l; $('xpFill').style.transform = 'scaleX(' + clamp((CITY.xp - a) / (b - a), 0, 1).toFixed(3) + ')';
-      $('trustTxt').textContent = 'TRUST ' + Math.round(CITY.trust) + '%';
+      $('trustTxt').textContent = 'TRUST ' + Math.round(CITY.trust) + '%' + (CITY.fans ? ' · ★' + CITY.fans : '');
       $('lvPts').hidden = CITY.pts < 1; $('lvPts').textContent = '+' + CITY.pts;
       $('callTxt').textContent = !CITY.calls ? 'CALLS OFF' : m ? '' : 'NEXT CALL ' + Math.max(0, Math.ceil(CITY.nextCall)) + 's';
     }
@@ -7233,6 +7936,7 @@ function frame(now){
   if (REAL) { shadowTick = (shadowTick + 1) % (TOUCH || fps < 45 ? 2 : 1); if (shadowTick === 0) renderer.shadowMap.needsUpdate = true; }
   renderer.render(scene, camera);
   renderHands();
+  peopleAfterRender();
 
   frames++; fpsT += Math.min(0.5, (now - (frame.prevNow || now)) / 1000); frame.prevNow = now; hudT += dt; // real time, so slow phones are seen as slow
   if (hudT > 0.1) { hudT = 0; vSpeed.textContent = Math.round(r.speed * 3.6); vAlt.textContent = Math.round(r.alt); updateHud(); }
